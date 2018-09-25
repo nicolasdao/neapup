@@ -26,7 +26,7 @@
   },
   "homepage": "https://gitlab.com/neap/neap-manager#readme",
   "scripts": {
-    "install": "npm install ./ -g",
+    "insta": "npm install ./ -g",
     "lint": "eslint index.js src/ test/ --fix",
     "release": "standard-version",
     "start": "node index.js",
