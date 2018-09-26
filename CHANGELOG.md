@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.1"></a>
+## 0.22.1 (2018-09-26)
+
+
+### Features
+
+* 1st commit ([be25ed1](https://gitlab.com/neap/neap-manager/commit/be25ed1))
+* Allow to skip cleaning question at the end of a deployement ([203684f](https://gitlab.com/neap/neap-manager/commit/203684f))
+* Check quotas for standard project ([225c203](https://gitlab.com/neap/neap-manager/commit/225c203))
+
+
+
 <a name="0.22.0"></a>
 # [0.22.0](https://gitlab.com/neap/webfunc/compare/v0.21.0...v0.22.0) (2018-09-25)
 
