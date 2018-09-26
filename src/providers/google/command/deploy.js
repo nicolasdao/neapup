@@ -10,7 +10,7 @@ const path = require('path')
 const clipboardy = require('clipboardy')
 const gcp = require('../gcp')
 const { error, wait, success, link, bold, info, note, warn, askQuestion, question, debugInfo, cmd, promptList } = require('../../../utils/console')
-const { zipToBuffer, getAppJsonFiles, exists: fileExists } = require('../../../utils/files')
+const { zipToBuffer, getAppJsonFiles, exists: fileExists, checkStandardEnvFilesQuotas } = require('../../../utils/files')
 const { identity, promise, date, obj, collection }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
@@ -90,18 +90,52 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 			//////////////////////////////
 			// 2. Zip project 
 			//////////////////////////////
-			waitDone = wait('Zipping project...')
 			return appHosting.get(options.projectPath, options)
 				.then(hostingConfig => {
 					// 3.1. Create app.yaml for flexible environment 
-					const hostingEnv = ((hostingConfig || {}).env || '').trim().toLowerCase()
+					const hostConfig = hostingConfig || {}
+					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
+					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
 					const extraFiles = deployingToFlex
-						? { files: [{ name: 'app.yaml', content: appHosting.toYaml(obj.merge(hostingConfig, { runtime: 'nodejs' })) }] } 
+						? { files: [{ name: 'app.yaml', content: appHosting.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) }] } 
 						: {}
 
-					// 3.2. Zip
-					return zipToBuffer(options.projectPath, obj.merge(options, extraFiles))
+					// 3.2. Check quotas for Standard env.
+					const checkQuotas = deployingToFlex || (hostConfig.ignore && hostConfig.ignore['quotas-warning'])
+						? Promise.resolve(null)
+						: Promise.resolve(null).then(() => {
+							waitDone = wait('Checking project does not exceed the Standard environment quotas...')
+							return checkStandardEnvFilesQuotas(options.projectPath)
+								.catch(e => {
+									waitDone()
+									console.log(warn(e.message))
+									if (e.folders) {
+										console.log(info('Folders exceeding limit:'))
+										e.folders.forEach(x => console.log(`  - ${x.folder}: ${x.files}`))
+									}
+
+									return askQuestion(question('Do you wish to continue (Y/n) ? ')).then(yes => {
+										if (yes == 'n')
+											process.exit()
+
+										console.log(note(`To ignore this warning next time, add this config to your ${bold(fName)}: "hosting": { "ignore": { "quotas-warning": true } }`))
+										return { error: true }
+									})
+								})
+								.then(res => {
+									waitDone()
+									if (!res || !res.error)
+										console.log(success('Project respects Standard environment limits'))
+								})
+						})
+
+					// 3.3. Zip
+					return checkQuotas.then(() => {
+						const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
+						waitDone = wait(msg)
+						return zipToBuffer(options.projectPath, obj.merge(options, extraFiles, { build: hostConfig.build }))
+					})
 				})
 				.then(({ filesCount, buffer }) => {
 					waitDone()
@@ -197,7 +231,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 							console.log(info(`For more details about this error, go to ${bold(link(moreInfoLink))}`))
 							throw new Error('Deployment failed.')
 						}, 
-						options)
+						obj.merge(options, { interval: 4 * 1000, timeOut: 5 * 60 * 1000 }))
 						.then(res => ({ status: res.status, data: res.data, operationId }))
 						.catch(e => {
 							if (options.promote && (e.message || '').toLowerCase().indexOf('timeout') >= 0) {

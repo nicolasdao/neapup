@@ -12,12 +12,15 @@ const { homedir } = require('os')
 const _glob = require('glob')
 const archiver = require('archiver')
 const { toBuffer } = require('convert-stream')
-const { error, exec, debugInfo, cmd, bold, link, info } = require('./console')
+const { error, exec, debugInfo, cmd, bold, link, info, warn } = require('./console')
 const { collection } = require('./core')
 
 const TEMP_FOLDER = join(homedir(), 'temp/webfunc')
 const FILES_BLACK_LIST = ['.DS_Store']
 const FILES_REQUIRED_LIST = ['package.json']
+const MAX_FILE_COUNT_PER_STANDARD_PROJECT = 10000
+const MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER = 1000
+
 
 const createTempFolder = () => fs.ensureDir(TEMP_FOLDER)
 	.catch(() => {
@@ -47,84 +50,144 @@ const getJsonFiles = (src='', options={}) => {
 	return glob(join(src, '*.json'))
 }
 
-const cloneNodejsProject = (src='', options={ debug:false, build:false }) => createTempFolder().then(() => {
-	const { debug, build } = options || {}
+const _getAllNodeJsFiles = (src, options={}) => {
+	const ignore = !options.ignoreNodeModules ? null : { ignore: '**/node_modules/**' }
+	return glob(join(src, '**/*.*'), ignore)
+		.then(files => glob(join(src, '**/.*'), ignore)
+			.then(dot_files => ([...(files || []), ...(dot_files || [])])))
+}
+
+const _countFilesPerFolders = (files) => {
+	const breakDown = (files || []).reduce((acc,f) => {
+		const d = dirname(f)
+		acc[d] = (acc[d] || 0) + 1
+		return acc
+	}, {})
+
+	return Object.keys(breakDown).map(folder => ({ folder, files: breakDown[folder] }))
+}
+
+const checkStandardEnvFilesQuotas = src => fileExists(join(src, 'node_modules')).catch(() => null).then(yes => {
+	if (yes) 
+		return _getAllNodeJsFiles(src).then(files => {
+			const totalFiles = files.length 
+			if (totalFiles > MAX_FILE_COUNT_PER_STANDARD_PROJECT)
+				throw new Error(`Your project exceeds the 10,000 files limit for Standard App Engine environments (current number: ${totalFiles}). Please consider using a Flexible environment instead.`)
+			const breakDown = _countFilesPerFolders(files)
+			const foldersExceedingLimit = breakDown.filter(x => x.files > MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER)
+			if (foldersExceedingLimit.length > 0) {
+				let e = new Error('Your project exceeds the 1,000 files per folder limit for Standard App Engine environments. Please consider using a Flexible environment instead.')
+				e.folders = foldersExceedingLimit
+				throw e
+			}
+		})
+})
+
+const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() => {
+	const { debug } = options || {}
 	const dst = join(TEMP_FOLDER, Date.now().toString())
+	const includeNodeModules = options.build && options.build.include && options.build.include.node_modules
 
 	if (debug) 
 		console.log(debugInfo(`Copying content of folder \n${src} \nto temporary location \n${dst}`))
 
 	// 1. Getting all the files under the "src" folder
-	return glob(join(src, '**/*.*'), { ignore: '**/node_modules/**' }).then(files => glob(join(src, '**/.*'), { ignore: '**/node_modules/**' }).then(dot_files => {
-		const extraFiles = (options.files || []).filter(x => x && x.name && x.content)
-		const extraFullPathFiles = extraFiles.map(x => ({ name: join(dst, x.name), content: x.content }))
-		const blackList = [...extraFiles, ...FILES_BLACK_LIST]
-		const all_files = [...(files || []), ...(dot_files || [])].filter(f => !blackList.some(file => basename(f) == file))		
-		const filesCount = all_files.length + extraFiles.length
+	return _getAllNodeJsFiles(src, { ignoreNodeModules: true })
+		.then(files => {
+			const extraFiles = (options.files || []).filter(x => x && x.name && x.content)
+			const extraFullPathFiles = extraFiles.map(x => ({ name: join(dst, x.name), content: x.content }))
+			const blackList = [...extraFiles, ...FILES_BLACK_LIST]
+			const all_files = files.filter(f => !blackList.some(file => basename(f) == file))		
+			const filesCount = all_files.length + extraFiles.length
 
-		// 2. Making sure all the required files are defined
-		const missingFiles = FILES_REQUIRED_LIST.filter(file => !all_files.some(f => basename(f) == file))
-		if (missingFiles.length > 0) {
-			console.log(error(`Invalid nodejs project. To deploy the project located under ${link(src)} to Google App Engine, you need to add the following missing files: ${missingFiles.map(x => bold(x)).join(', ')}`))
-			throw new Error('Invalid nodejs project.')
-		}
-
-		// 3. Making sure that the package.json contains a "start" script
-		return getJson(all_files.find(x => basename(x) == 'package.json')).then(pack => {
-			const missingStartScript = !((pack || {}).scripts || {}).start
-			if (missingStartScript) {
-				console.log(error(`The ${bold('package.json')} is missing a required ${bold('start')} script.`))
-				console.log(info('App Engine requires that start script to start the server (e.g., "start": "node app.js")'))
-				throw new Error('Missing required start script in package.json')
+			// 2. Making sure all the required files are defined
+			const missingFiles = FILES_REQUIRED_LIST.filter(file => !all_files.some(f => basename(f) == file))
+			if (missingFiles.length > 0) {
+				console.log(error(`Invalid nodejs project. To deploy the project located under ${link(src)} to Google App Engine, you need to add the following missing files: ${missingFiles.map(x => bold(x)).join(', ')}`))
+				throw new Error('Invalid nodejs project.')
 			}
-		
-			if (debug)
-				console.log(debugInfo(`Found ${all_files.length} files under folder \n${src}\nCopying them now...`))
 
-			// 4. Copy all the files under the "src" folder to the temp destination
-			return Promise.all(all_files.map(f => fs.copy(f, join(dst, f.replace(src, '')))
-				.then(() => null)
-				.catch(() => {
-					console.log(error(`Failed to clone nodejs project located under \n${src}\nto the temporary location \n${dst}\nThis procedure is usually required to zip the project before uploading it to the selected provider.`))
-					return f
-				})))
-				.then(values => Promise.all(extraFullPathFiles.map(f => writeToFile(f.name, f.content)
+			// 3. Making sure that the package.json contains a "start" script
+			const packFile = collection.sortBy(all_files.filter(x => basename(x) == 'package.json').map(x => ({ file: x, l: x.length })), x => x.l)[0].file
+			return getJson(packFile).then(pack => {
+				const missingStartScript = !((pack || {}).scripts || {}).start
+				if (missingStartScript) {
+					console.log(error(`The ${bold('package.json')} is missing a required ${bold('start')} script.`))
+					console.log(info('App Engine requires that start script to start the server (e.g., "start": "node app.js")'))
+					throw new Error('Missing required start script in package.json')
+				}
+		
+				if (debug)
+					console.log(debugInfo(`Found ${all_files.length} files under folder \n${src}\nCopying them now...`))
+
+				// 4. Copy all the files from "src" to the temp destination
+				return Promise.all(all_files.map(f => fs.copy(f, join(dst, f.replace(src, '')))
 					.then(() => null)
 					.catch(() => {
-						console.log(error(`Failed to add extra file to project located under \n${src}\nto the temporary location \n${dst}\nThis procedure is usually required to zip the project before uploading it to the selected provider.`))
+						console.log(error(`Failed to clone nodejs project located under \n${src}\nto the temporary location \n${dst}\nThis procedure is usually required to zip the project before uploading it to the selected provider.`))
 						return f
-					}))).then(otherValues => [...values, ...otherValues]))
-				.then(values => {
-					const errors = values.filter(v => v != null)
-					if (errors.length > 0) {
-						console.log(error(`Could not copy the following files to ${TEMP_FOLDER}:`))
-						errors.forEach(err => console.log(error(err)))
-						throw new Error('Failed to copy some files.')
-					}
+					})))
+					.then(values => Promise.all(extraFullPathFiles.map(f => writeToFile(f.name, f.content)
+						.then(() => null)
+						.catch(() => {
+							console.log(error(`Failed to add extra file to project located under \n${src}\nto the temporary location \n${dst}\nThis procedure is usually required to zip the project before uploading it to the selected provider.`))
+							return f
+						}))).then(otherValues => [...values, ...otherValues]))
+					.then(values => {
+						const errors = values.filter(v => v != null)
+						if (errors.length > 0) {
+							console.log(error(`Could not copy the following files to ${TEMP_FOLDER}:`))
+							errors.forEach(err => console.log(error(err)))
+							throw new Error('Failed to copy some files.')
+						}
+					})
+					.then(() => {
+						if (includeNodeModules) {
+						// 1. Create the node_modules dir
+							const npmCommand = `npm install --prefix="${dst}/" --production`
+							if (debug)
+								console.log(debugInfo(`Files successfully copied to \n${dst}${includeNodeModules ? `\nExecuting command ${cmd(npmCommand)}` : ''}`))
+							return exec(npmCommand)
+								.catch(e => {
+									console.log(error(`Command ${cmd(npmCommand)} failed.`))
+									console.log(warn(bold('Check that your current nodejs version is adequate to build this project.')))
+									console.log(info(`Yours is currently: ${bold(process.version)}`))
+									console.log(info('Failing to build a nodejs project is often related to using the wrong nodejs version, especially when webpack is involved.'))
+									if (e && e.message)
+										throw e 
+									else 
+										throw new Error(`Command ${npmCommand} failed.`)
+								})
+								.then(() => {
+									if (debug)
+										console.log(debugInfo('Command successfully executed.'))
+								
+									// 2. Renaming the node_modules so it can't be deleted by App Engine
+									return fs.move(join(dst, 'node_modules'), join(dst, 'node_modules2'))
+								})
+								.then(() => {
+									if (debug)
+										console.log(debugInfo('node_modules successfully renamed node_modules2.'))
 
-					const npmCommand = `npm install --prefix ${dst}`
+									//3. Update the package.json to install nothing (i.e., not install anything)
+									//   and add a postinstall script to restore node_modules2
+									const tmpPackPath = join(dst, 'package.json')
+									return getJson(tmpPackPath).then(pack => {
+										pack.dependencies = {}
+										pack.devDependencies = {}
+										pack.postinstall = 'rm -rf ./node_module && mv ./node_modules2 ./node_module'
+										return writeToFile(tmpPackPath, JSON.stringify(pack, null, '  '))
+									})
+								}) // 4. Get the new file count
+								.then(() => _getAllNodeJsFiles(join(dst, 'node_modules2')).then(files => {
+									return { filesCount: filesCount + files.length, dst }
+								}))
+						} else 
+							return { filesCount, dst }
 
-					if (debug)
-						console.log(debugInfo(`Files successfully copied to \n${dst}${build ? `\nExecuting command ${cmd(npmCommand)}` : ''}`))
-
-					if (!build)
-						return { filesCount, dst }
-					else
-						return exec(npmCommand)
-							.then(() => {
-								if (debug)
-									console.log(debugInfo('Command successfully executed.'))
-							})
-							.catch(() => {
-								if (debug)
-									console.log(debugInfo('Command failed.'))
-
-								throw new Error(`Command ${npmCommand} failed.`)
-							})
-							.then(() => ({ filesCount, dst }))
-				})
+					})
+			})
 		})
-	}))
 })
 
 const deleteFolder = (src, options={ debug:false }) => {
@@ -260,7 +323,8 @@ module.exports = {
 	getFiles,
 	getJsonFiles,
 	getAppJsonFiles,
-	getRootDir
+	getRootDir,
+	checkStandardEnvFilesQuotas
 }
 
 
