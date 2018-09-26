@@ -145,7 +145,7 @@ const requestConsent = ({ client_id, redirect_uri, scope }, stopFn, timeout, opt
 	} else {
 		console.log(info(
 			`We'll need you to grant us access to provision your ${highlight('Google Cloud Platform')} account in order to comunicate with their API.`,
-			`To provision a dedicated set of tokens for ${cmd('webfunc')}, Go to ${link(googleConsentScreenUrl)} and grant access to Webfunc.`
+			`To provision a dedicated set of tokens for ${cmd('neap')}, Go to ${link(googleConsentScreenUrl)} and grant access to Neap.`
 		))
 		throw new Error(`Can't browse to consent screen from platform ${process.platform} (currently supported platforms: 'darwin', 'win32').`)
 	}
@@ -215,7 +215,7 @@ const testBillingEnabled = (projectId, token, options={ debug:false }) => Promis
 	_validateRequiredParams({ projectId, token })
 	_showDebug('Testing if billing is enabled by creating a dummy bucket on Google Cloud Platform.', options)
 
-	const bucketName = `webfunc-bucket-healthcheck-${identity.new()}`.toLowerCase()
+	const bucketName = `neap-bucket-healthcheck-${identity.new()}`.toLowerCase()
 	return createBucket(bucketName, projectId, token, { debug: options.debug, verbose: false })
 		.then(() => true)
 		.catch(e => {
@@ -513,6 +513,7 @@ const getInstanceTypes = () => Promise.resolve([
 	{ id: 'B4', label: 'B4 (Memory: 512 MB, CPU: 2.4 GHz)', scalingType: 'manual, basic', env:'standard' },
 	{ id: 'B4_1G', label: 'B4_1G (Memory: 1024 MB, CPU: 2.4 GHz)', scalingType: 'manual, basic', env:'standard' },
 	{ id: 'B8', label: 'B8 (Memory: 1024 MB, CPU: 4.8 GHz)', scalingType: 'manual, basic', env:'standard' },
+	{ id: 'f1-micro', label: 'Micro - Good for testing & dev', specs: [{ cores: 1, mem: 0.6 }, { cores: 1, mem: 1.7 } ], scalingType: 'auto, manual, basic', env:'flex' },
 	{ id: 'n1-standard', label: 'Standard - Good for versatile tasks', specs: [{ cores: 1, mem: 3.75 } ,{ cores: 2, mem: 7.50 } ,{ cores: 4, mem: 15 } ,{ cores: 8, mem: 30 } ,{ cores: 16, mem: 60 } ,{ cores: 32, mem: 120 } ,{ cores: 64, mem: 240 } ,{ cores: 96, mem: 360 } ], scalingType: 'auto, manual, basic', env:'flex' },
 	{ id: 'n1-highmem', label: 'High-Memory - Optimized for memory intensive tasks', specs: [{ cores: 2, mem: 13 } ,{ cores: 4, mem: 26 } ,{ cores: 8, mem: 52 } ,{ cores: 16, mem: 104 } ,{ cores: 32, mem: 208 } ,{ cores: 64, mem: 416 } ,{ cores: 96, mem: 624 } ], scalingType: 'auto, manual, basic', env:'flex' },
 	{ id: 'n1-highcpu', label: 'High-CPU - Optimized for CPU intensive tasks', specs: [{ cores: 2, mem: 1.8 } ,{ cores: 4, mem: 3.6 } ,{ cores: 8, mem: 7.2 } ,{ cores: 16, mem: 14.4 } ,{ cores: 32, mem: 28.8 } ,{ cores: 64, mem: 57.6 } ,{ cores: 96, mem: 86.4 } ], scalingType: 'auto, manual, basic', env:'flex' },
@@ -971,7 +972,7 @@ module.exports = {
 	app: {
 		'get': getAppDetails,
 		getRegions: getAppRegions,
-		getInstanceTypes: getInstanceTypes,
+		getInstanceTypes,
 		create: createApp,
 		deploy: deployApp,
 		getOperationStatus: checkOperationStatus,

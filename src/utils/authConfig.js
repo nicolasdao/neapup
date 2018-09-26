@@ -10,16 +10,16 @@ const { homedir } = require('os')
 const { file } = require('./index')
 const { error, debugInfo } = require('./console')
 
-const CONFIGFILE = join(homedir(), '.webfunc.json')
+const CONFIGFILE = join(homedir(), '.neapup.json')
 
 const getAuthConfig = (options={ debug:false }) => Promise.resolve(null).then(() => {
 	const { debug } = options || {}
 	if (debug)
-		console.log(debugInfo('Retrieving \'.webfunc.json\' config file stored in local storage.'))
+		console.log(debugInfo('Retrieving \'.neapup.json\' config file stored in local storage.'))
 
 	return file.exists(CONFIGFILE).then(() => file.read(CONFIGFILE)).then(c => {
 		if (debug)
-			console.log(debugInfo('Found a \'.webfunc.json\' config file stored locally.'))
+			console.log(debugInfo('Found a \'.neapup.json\' config file stored locally.'))
 		try {
 			if (c) {
 				const config = JSON.parse(c) || {}
@@ -33,7 +33,7 @@ const getAuthConfig = (options={ debug:false }) => Promise.resolve(null).then(()
 		}
 	}).catch(() => {
 		if (debug)
-			console.log(debugInfo('No \'.webfunc.json\' config file has been stored locally yet.'))
+			console.log(debugInfo('No \'.neapup.json\' config file has been stored locally yet.'))
 		return {}
 	})
 })

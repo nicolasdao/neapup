@@ -79,9 +79,9 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 			if (svcName && service.name != svcName)
 				service.name = svcName
 			const bucket = { 
-				name: `webfunc-deployment-${service.version}-${identity.new()}`.toLowerCase(), 
+				name: `neap-deployment-${service.version}-${identity.new()}`.toLowerCase(), 
 				projectId }
-			let zip = { name: 'webfunc-app.zip' }
+			let zip = { name: 'neap-app.zip' }
 			let deployStart, deployingToFlex
 
 			const fileName = options.env ? `app.${options.env}.json` : 'app.json'
@@ -94,6 +94,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 				.then(hostingConfig => {
 					// 3.1. Create app.yaml for flexible environment 
 					const hostConfig = hostingConfig || {}
+					options.costReduction = hostConfig['cost-reduction']
 					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
 					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
@@ -390,7 +391,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 							console.log(`${indent}- ${version.reason.msg}`)
 							console.log(`${indent}  ${version.reason.fix}`)
 						})
-						return askQuestion(question('Do you want to fix this (Y/n) ? ')).then(yes => {
+						return (options.costReduction ? Promise.resolve(null) : askQuestion(question('Do you want to fix this (Y/n) ? '))).then(yes => {
 							if (yes == 'n') {
 								console.log(info(`To double-check that Google is not charging you for nothing, go to ${moreInfoLink}`))
 								return
@@ -405,11 +406,14 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 										const err = values.filter(x => x.errors).map(x => x.errors)
 										if (err.length > 1) {
 											console.log(error(`Failed to reduce the cost of ${billableVersions.length > 1 ? 'one or many previous SERVING versions' : 'a previous SERVING version' } in service ${bold(service.name)}.`))
-											console.log(warn(`Th previous SERVING ${versionLabel} of service ${bold(service.name)} might still incur a cost, even though they're not serving traffic anymore.`))
+											console.log(warn(`The previous SERVING ${versionLabel} of service ${bold(service.name)} might still incur a cost, even though they're not serving traffic anymore.`))
 											console.log(warn(`To manually fix this, go to ${moreInfoLink}`))
 											throw err[0]
 										} 
 										console.log(success(`Successfully reduce the cost of ${billableVersions.length} ${versionLabel} in service ${bold(service.name)} in ${((Date.now() - stopStart)/1000).toFixed(2)} seconds.`))
+										console.log(info(`To double-check that Google is not charging you for nothing, go to ${moreInfoLink}`))
+										if (!options.costReduction)
+											console.log(note(`To automatically perform this cost reduction next time, add this config to your app.json: ${bold('"hosting": { "cost-reduction": true }')}`))
 										return
 									})
 							}
@@ -553,7 +557,7 @@ const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 					return clipboardy.write(QUOTAS_URL).then(() => {
 						console.log(error(`Your Google Cloud Platform quotas have been exceeded${quotas})`))
 						console.log(info('Here are 2 actions you could take to fix this glitch:'))
-						console.log(`    1. Use the command ${cmd('webfunc clean')} to deactivate unused resources.`)
+						console.log(`    1. Use the command ${cmd('neap clean')} to deactivate unused resources.`)
 						console.log(`    2. OR, go to ${link(QUOTAS_URL)} (copied to clipboard) and click on the ${bold('EDIT QUOTAS')} button at the top to increase your quotas.`)
 						process.exit()
 					})
@@ -582,7 +586,7 @@ const _testEnv = (projectPath, options={}) => options.env
 	? fileExists(path.join(projectPath, `app.${options.env}.json`)).catch(() => false).then(yes => {
 		if (!options.noPrompt && !yes) {
 			console.log(warn(`No ${bold(`app.${options.env}.json`)} config file found in your app.`))
-			console.log(info(`You can create one with this command: ${cmd(`webfunc manage --env ${options.env}`)}`))
+			console.log(info(`You can create one with this command: ${cmd(`neap manage --env ${options.env}`)}`))
 			console.log(info(`In the meantime, we can use your app.json now and create a new app.${options.env}.json after your deployment is over.`))
 			return askQuestion(question('Do you want to continue (Y/n)? ')).then(answer => {
 				if (answer == 'n')

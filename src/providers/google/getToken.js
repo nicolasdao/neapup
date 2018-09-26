@@ -12,8 +12,14 @@ const { info, aborted, error, askQuestion, debugInfo } = require('../../utils/co
 const authConfig = require('../../utils/authConfig')
 const gcp = require('./gcp')
 
-const CLIENT_ID = '429438303487-0gh70ga2469aqrfhf134ei4ph8p24bia.apps.googleusercontent.com'
-const CLIENT_SECRET = '2Uz-BIRBYlCaFTL4qvkTzJmo'
+// Google Cloud Platform Enabled APIs:
+// - Cloud Resource Manager API
+// - Service Management API
+// - Cloud Build API
+// - App Engine Admin API 
+
+const CLIENT_ID = '197157573268-pj0kkr7ekfj0fmoq3ji57aej50oui4ns.apps.googleusercontent.com' //'429438303487-0gh70ga2469aqrfhf134ei4ph8p24bia.apps.googleusercontent.com'
+const CLIENT_SECRET = 'Lb0ynC3U1JDxTS_ds4TzKrDF' //'2Uz-BIRBYlCaFTL4qvkTzJmo'
 const SCOPES = [
 	'https://www.googleapis.com/auth/cloud-platform',
 	'https://www.googleapis.com/auth/appengine.admin'

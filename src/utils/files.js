@@ -15,7 +15,7 @@ const { toBuffer } = require('convert-stream')
 const { error, exec, debugInfo, cmd, bold, link, info, warn } = require('./console')
 const { collection } = require('./core')
 
-const TEMP_FOLDER = join(homedir(), 'temp/webfunc')
+const TEMP_FOLDER = join(homedir(), 'temp/neapup')
 const FILES_BLACK_LIST = ['.DS_Store']
 const FILES_REQUIRED_LIST = ['package.json']
 const MAX_FILE_COUNT_PER_STANDARD_PROJECT = 10000
@@ -67,16 +67,17 @@ const _countFilesPerFolders = (files) => {
 	return Object.keys(breakDown).map(folder => ({ folder, files: breakDown[folder] }))
 }
 
+// ref: https://cloud.google.com/appengine/docs/standard/nodejs/how-requests-are-handled
 const checkStandardEnvFilesQuotas = src => fileExists(join(src, 'node_modules')).catch(() => null).then(yes => {
 	if (yes) 
 		return _getAllNodeJsFiles(src).then(files => {
 			const totalFiles = files.length 
 			if (totalFiles > MAX_FILE_COUNT_PER_STANDARD_PROJECT)
-				throw new Error(`Your project exceeds the 10,000 files limit for Standard App Engine environments (current number: ${totalFiles}). Please consider using a Flexible environment instead.`)
+				throw new Error(`Your project exceeds the ${MAX_FILE_COUNT_PER_STANDARD_PROJECT} files limit for Standard App Engine environments (current number: ${totalFiles}). Please consider using a Flexible environment instead.`)
 			const breakDown = _countFilesPerFolders(files)
 			const foldersExceedingLimit = breakDown.filter(x => x.files > MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER)
 			if (foldersExceedingLimit.length > 0) {
-				let e = new Error('Your project exceeds the 1,000 files per folder limit for Standard App Engine environments. Please consider using a Flexible environment instead.')
+				let e = new Error(`Your project exceeds the ${MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER} files per folder limit for Standard App Engine environments. Please consider using a Flexible environment instead.`)
 				e.folders = foldersExceedingLimit
 				throw e
 			}

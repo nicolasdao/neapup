@@ -781,7 +781,7 @@ const _chooseInstances = (answers={}, options={}) => Promise.resolve(null).then(
 				const inst = envInstances.find(x => x.id == answer)
 				const types = inst.specs.map(({ cores, mem }, idx) => ({ name: ` ${idx+1}. Core: ${cores} - Memory: ${mem} GB`, value: idx }))
 				return promptList({ message: 'Choose a spec:', choices: types, separator: false}).then(answer => {
-					if (!answer)
+					if (!answer && answer != 0)
 						return _updateRoot(answers, obj.merge(options, { message: ALT_QUESTION(options.env) }))
 					else{
 						const specs = inst.specs[answer]

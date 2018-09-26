@@ -44,7 +44,7 @@ const error = (...input) => {
 		messages = [ message ]
 
 		if (slug) {
-			messages.push(`> More details: https://webfunc/${slug}`)
+			messages.push(`> More details: https://neapup/${slug}`)
 		}
 	}
 
@@ -58,7 +58,7 @@ const warn = (...input) => {
 		messages = [ message ]
 
 		if (slug) {
-			messages.push(`> More details: https://webfunc/${slug}`)
+			messages.push(`> More details: https://neapup/${slug}`)
 		}
 	}
 

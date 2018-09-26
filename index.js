@@ -18,14 +18,14 @@ const { deploy, list, configure, clean } = require('./src')
 program
 	.version('1.0.0')
 	.command('login [provider]')
-	.usage(`. This command logs the user to his/her Google Cloud (${cmd('webfunc login google')}) or AWS (${cmd('webfunc login aws')}) account. Default is 'google' (${cmd('webfunc login')}). `)
+	.usage(`. This command logs the user to his/her Google Cloud (${cmd('neap login google')}) or AWS (${cmd('neap login aws')}) account. Default is 'google' (${cmd('neap login')}). `)
 	.option('-d, --debug', 'Show debugging messages.')
 	.action((provider='google', options) => {
 		if (provider == 'google')
 			return login({ debug: options.debug })
 				.then(() => {
 					console.log(info('Awesome! You\'re now logged in.'))
-					console.log(info(`If you want to switch to another project, simply type ${cmd('webfunc switch')}.`))
+					console.log(info(`If you want to switch to another project, simply type ${cmd('neap switch')}.`))
 					process.exit()
 				})
 	})
