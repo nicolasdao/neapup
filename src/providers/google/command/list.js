@@ -98,7 +98,8 @@ const _listProjectDetails = (projectIds, token, options={}) => Promise.resolve(n
 						'tot. vers.': versionsCount, 
 						'live vers.': lifeVersionsCount, 
 						'leaking vers.': leakingVersionsCount, 
-						'harmless vers.': harmlessInactiveVersionsCount, 
+						'harmless vers.': harmlessInactiveVersionsCount,
+						'how to start/stop service?': lifeVersionsCount > 0 ? `neap stop ${name} -p ${projectId}` : `neap start ${name} -p ${projectId}`
 					}
 				}))
 
@@ -267,7 +268,8 @@ const _listProjectServices = (projectId, token, options) => {
 						type: v.env, // e.g., 'standard' or 'flex'
 						created: v.createTime,
 						user: (v.createdBy || '').toLowerCase(),
-						leaking: v.isLeaking ? 'TRUE' : 'FALSE'
+						leaking: v.isLeaking ? 'TRUE' : 'FALSE',
+						'how to stop the leak?': v.isLeaking ? 'neap clean' : 'N.A.' 
 					})).slice(0,5)
 
 					const deployments = Object.keys(versions[0]).map(colName => {

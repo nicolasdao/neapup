@@ -21,7 +21,7 @@ const ALT_QUESTION = (env) => `Configure another setting in the ${env ? `app.${e
 
 /**
  * [description]
- * @param  {Object} options [description]
+ * @param  {Object} options.skipQuestions [description]
  * @return {Object} result        
  * @return {String} result.token     	  Refreshed OAuth token
  * @return {String} result.projectId      Project id
@@ -29,6 +29,8 @@ const ALT_QUESTION = (env) => `Configure another setting in the ${env ? `app.${e
 const confirmCurrentProject = (options={ debug:false, selectProject: false }) => Promise.resolve(null).then(() => {
 	if (options.debug === undefined) options.debug = false
 	if (options.selectProject === undefined) options.selectProject = false
+
+	if (options.skipQuestions) options.selectProject = options.skipQuestions
 
 	//////////////////////////////
 	// 1. Show current project
@@ -297,9 +299,13 @@ const _promptUserToConfirm = (projectId, serviceId, locationId, token, hostingCo
 	]
 
 	const skipMakingChoices = options.selectProject && locationId
+	let ask
 
-	const ask = !skipMakingChoices
-		? (() => {
+	if (options.changeAccount)
+		ask = askQuestion(question('Do you want to use another Google Account (Y/n) ? '))
+			.then(yes => yes == 'n' ? null : 'switchAccount')
+	else if (!skipMakingChoices) 
+		ask = (() => {
 			if (locationId) {
 				console.log(info('Main settings:'))
 				console.log(`   Project: ${bold(projectId)} (${locationId})`)
@@ -311,7 +317,8 @@ const _promptUserToConfirm = (projectId, serviceId, locationId, token, hostingCo
 
 			return promptList({ message: 'Do you want to continue?', choices, separator: false})
 		})()
-		: Promise.resolve('yes')
+	else
+		ask = Promise.resolve('yes')
 
 	return ask.then(answer => {
 		if (!answer)

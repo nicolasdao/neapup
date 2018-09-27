@@ -15,7 +15,8 @@ module.exports = {
 	deploy: require('./deploy'),
 	init: require('./init'),
 	configure: utils.configure,
-	clean: require('./clean')
+	clean: require('./clean'),
+	manage: require('./manage')
 }
 
 

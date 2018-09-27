@@ -13,7 +13,7 @@
 const program = require('commander')
 const { cmd, info } = require('./src/utils/console')
 const { login } = require('./src/providers/google/account')
-const { deploy, list, configure, clean } = require('./src')
+const { deploy, list, configure, clean, manage } = require('./src')
 
 program
 	.version('1.0.0')
@@ -63,7 +63,7 @@ program
 program
 	.command('list [opt1] [opt2]')
 	.alias('ls')
-	.usage('List all the App Engine services currently active in your Google Cloud Platform project.')
+	.usage('. This command lists all the App Engine services currently active in your Google Cloud Platform project.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.option('-g, --global', 'Choose a project from your account first before listing the services.')
 	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')
@@ -74,11 +74,33 @@ program
 
 program
 	.command('clean [opt1] [opt2]')
-	.usage('Clean all the Projects currently active in your Google Cloud Platform.')
+	.usage('. This cleans all the Projects currently active in your Google Cloud Platform.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.action((opt1, opt2, options) => {
 		const { provider } = _getParams(opt1, opt2)
 		return clean(provider, { debug: options.debug }).then(() => process.exit())
+	})
+
+program
+	.command('stop <service>')
+	.usage('. This stops a service or a service\'s specific version.')
+	.option('-d, --debug', 'Show debugging messages.')
+	.option('-v, --version <version>', 'Stops a version')
+	.option('-p, --project <project>', 'Helps stopping a service faster')
+	.action((service, options) => {
+		return manage.service.stop(service, { debug: options.debug, projectId: options.project, version: options.version })
+			.then(() => process.exit())
+	})
+
+program
+	.command('start <service>')
+	.usage('. This starts a service or a service\'s specific version.')
+	.option('-d, --debug', 'Show debugging messages.')
+	.option('-v, --version <version>', 'Starts a version')
+	.option('-p, --project <project>', 'Helps starting a service faster')
+	.action((service, options) => {
+		return manage.service.start(service, { debug: options.debug, projectId: options.project, version: options.version })
+			.then(() => process.exit())
 	})
 
 const _getParams = (...options) => {

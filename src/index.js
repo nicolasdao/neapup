@@ -11,7 +11,8 @@ const {
 	service: gcpService, 
 	init: gcpInit, 
 	configure: gcpConfigure,
-	clean: gcpClean
+	clean: gcpClean,
+	manage: gcpManage
 } = require('./providers/google/command')
 
 const deploy = (provider='google', options={}) => Promise.resolve(null).then(() => {
@@ -44,5 +45,6 @@ module.exports = {
 	init,
 	list,
 	configure,
-	clean
+	clean,
+	manage: gcpManage
 }

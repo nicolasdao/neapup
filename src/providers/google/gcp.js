@@ -275,7 +275,13 @@ const getProject = (projectId, token, options={ debug:false, verbose:false }) =>
 		})
 })
 
-const listProjects = (token, options={ debug:false,  }) => Promise.resolve(null).then(() => {
+/**
+ * [description]
+ * @param  {[type]} token   				[description]
+ * @param  {Boolean} options.onlyActive 	[description]
+ * @return {[type]}         				[description]
+ */
+const listProjects = (token, options={}) => Promise.resolve(null).then(() => {
 	_showDebug('Requesting a list of all projects from Google Cloud Platform.', options)
 	_validateRequiredParams({ token })
 
@@ -283,6 +289,11 @@ const listProjects = (token, options={ debug:false,  }) => Promise.resolve(null)
 		Accept: 'application/json',
 		Authorization: `Bearer ${token}`
 	})
+		.then(res => {
+			if (res && res.data && res.data.projects && options.onlyActive)
+				res.data.projects = res.data.projects.filter(p => p && p.lifecycleState == 'ACTIVE')
+			return res
+		})
 })
 
 const createProject = (name, projectId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
@@ -734,6 +745,15 @@ const _createUpdateMaskQuery = patch => {
 }
 
 // doc: https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.services.versions/patch
+/**
+ * 
+ * @param  {[type]} projectId [description]
+ * @param  {[type]} service   [description]
+ * @param  {[type]} version   [description]
+ * @param  {[type]} token     [description]
+ * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
+ * @return {[type]}           [description]
+ */
 const updateServiceVersion = (projectId, service, version, token, patch={}, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, service, version, token })
 	const body =JSON.stringify(patch, null, ' ')
@@ -772,6 +792,15 @@ const updateServiceVersion = (projectId, service, version, token, patch={}, opti
 	})
 })
 
+/**
+ * 
+ * @param  {[type]} projectId [description]
+ * @param  {[type]} service   [description]
+ * @param  {[type]} version   [description]
+ * @param  {[type]} token     [description]
+ * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
+ * @return {[type]}           [description]
+ */
 const minimizeBilling = (projectId, service, version, token, options={}) => getServiceVersion(projectId, service, version, token, options).then(({ data }) => {
 	const isStandard = !data.env || data.env == 'standard'
 	const isAutoScaling = data.automaticScaling
@@ -780,6 +809,45 @@ const minimizeBilling = (projectId, service, version, token, options={}) => getS
 		: { servingStatus: 'STOPPED' }
 
 	return updateServiceVersion(projectId, service, version, token, patch, objectHelper.merge(options, { verbose: false }))
+})
+
+/**
+ * 
+ * @param  {[type]} projectId [description]
+ * @param  {[type]} service   [description]
+ * @param  {[type]} version   [description]
+ * @param  {[type]} token     [description]
+ * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
+ * @return {[type]}           [description]
+ */
+const stopVersion = (projectId, service, version, token, options={}) => minimizeBilling(projectId, service, version, token, options)
+	.then(res => {
+		if (res && res.data)
+			res.data.versionStatus = 'STOPPED'
+		return res
+	})
+
+/**
+ * 
+ * @param  {[type]} projectId [description]
+ * @param  {[type]} service   [description]
+ * @param  {[type]} version   [description]
+ * @param  {[type]} token     [description]
+ * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
+ * @return {[type]}           [description]
+ */
+const startVersion = (projectId, service, version, token, options={}) => getServiceVersion(projectId, service, version, token, options).then(({ data }) => {
+	const isStandard = !data.env || data.env == 'standard'
+	if (isStandard)
+		return { status: 200, data: { versionStatus: 'SERVING' } }
+
+	const patch = { servingStatus: 'SERVING' }
+	return updateServiceVersion(projectId, service, version, token, patch, objectHelper.merge(options, { verbose: false }))
+		.then(res => {
+			if (res && res.data)
+				res.data.versionStatus = 'SERVING'
+			return res
+		})
 })
 
 const deleteServiceVersion = (projectId, service, version, token, options={ debug:false }) => Promise.resolve(null).then(() => {
@@ -985,7 +1053,9 @@ module.exports = {
 				delete: deleteServiceVersion,
 				update: updateServiceVersion,
 				minimizeBilling,
-				migrateAllTraffic: migrateAllTraffic
+				migrateAllTraffic: migrateAllTraffic,
+				start: startVersion,
+				stop: stopVersion
 			}
 		},
 		domain: {
