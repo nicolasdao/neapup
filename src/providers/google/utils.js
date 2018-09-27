@@ -133,7 +133,6 @@ const configure = (options={}) => Promise.resolve(null).then(() => {
 		.then(result => {
 			if (result)
 				console.log(success(`${bold(configFileName)} successfully ${fileAlreadyExists ? 'updated' : 'created'}`))
-			return result
 		})
 		.catch(e => {
 			console.log(error(e.message, e.stack))
@@ -1200,13 +1199,14 @@ const _getDisplayableHostingConfig = (hostingConfig, indent='') => {
 	}, {})
 
 	const output = JSON.stringify(_removeEmptyObjectProperties(sortedHosting), null, '  ')
-		.replace(/(\{|\}|"|,)/g, '')
-		.split('\n')
+		.replace(/(\{|\}|"|,|\[|\])/g, '') // Remove { } [ ] , " 
+		.split('\n') // 
+		.filter(x => x.trim())
+		.map(x => {
+			const [label, ...values] = x.split(':')
+			return `${label}: ${bold(values.join(':').trim())}`
+		})
 		.join(`\n${indent}`)
-		.replace('\n', '')
-		.replace(/(\[|\])/g, '')
-		.replace(/(\n\s*)$/, '')
-		.replace(/\n((\n|\s)+?)\n/g, '\n')
 
 	return `${output}\n`
 }

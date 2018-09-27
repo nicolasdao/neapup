@@ -28,6 +28,7 @@
   "scripts": {
     "insta": "git pull origin master && npm install ./ -g",
     "lint": "eslint index.js src/ test/ --fix",
+    "push": "git push --follow-tags origin master",
     "release": "standard-version",
     "start": "node index.js",
     "test": "mocha"
