@@ -11,7 +11,7 @@ const clipboardy = require('clipboardy')
 const gcp = require('../gcp')
 const { error, wait, success, link, bold, info, note, warn, askQuestion, question, debugInfo, cmd, promptList } = require('../../../utils/console')
 const { zipToBuffer, getAppJsonFiles, exists: fileExists, checkStandardEnvFilesQuotas } = require('../../../utils/files')
-const { identity, promise, date, obj, collection }  = require('../../../utils')
+const { promise, date, obj, collection }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
 const getToken = require('../getToken')
@@ -19,8 +19,6 @@ const { hosting: appHosting } = require('../config')
 
 const FLEX_SERVICE_API = 'appengineflex.googleapis.com'
 const QUOTAS_URL = 'https://console.cloud.google.com/iam-admin/quotas'
-
-// gcp.serviceAPI.enable('appengineflex.googleapis.com', projectId, token)
 
 /**
  * [description]
@@ -39,7 +37,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		options.promote = true
 	options.projectPath = projectHelper.getFullPath(options.projectPath)
 	let waitDone = () => null
-	let service = { name: (options.serviceName || 'default'), version: `v${date.timestamp({ short:false })}` }
+	let service = { name: (options.serviceName || 'default') }
 
 	//////////////////////////////
 	// 1. Show current project and app engine details to help the user confirm that's the right one.
@@ -75,13 +73,18 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		// 1.2. Test of the 'options.env' exists. If not, then suggest to carry on with the app.json or abort
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
+		// .then(({ token, projectId, locationId, service: svcName }) => {
+		// 	return gcp.app.service.version.get('housi-188704', 'web-api-test', 'v20180928-021122-42', token, options).then(({ data }) => {
+		// 		console.log(data)
+		// 		throw new Error('ddqdqwe')
+		// 	})
+		// })
 		.then(({ token, projectId, locationId, service: svcName }) => {
 			if (svcName && service.name != svcName)
 				service.name = svcName
-			const bucket = { 
-				name: `neap-deployment-${service.version}-${identity.new()}`.toLowerCase(), 
-				projectId }
-			let zip = { name: 'neap-app.zip' }
+			service.version = `v${date.timestamp({ short:false })}`
+
+			let { bucket, zip } = _initDeploymentAssets(projectId, service.version)
 			let deployStart, deployingToFlex
 
 			const fileName = options.env ? `app.${options.env}.json` : 'app.json'
@@ -142,7 +145,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 					waitDone()
 					console.log(success(`Nodejs app (${filesCount} files) successfully zipped.`))
 					zip.file = buffer
-					zip.filesCount = filesCount
+					_updateDeploymentId(service, bucket, zip, filesCount)
 				}).catch(e => { waitDone(); throw e })
 				//////////////////////////////
 				// 3. Create bucket & Check that the 'default' service exists
@@ -245,7 +248,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 				})
 				.then(({ operationId, data }) => {
 					const versionUrl = data && data.response && data.response.versionUrl ? data.response.versionUrl : `https://${service.version}-dot-${service.name}-dot-${projectId}.appspot.com`
-					console.log(success(`App successfully deployed to App Engine's service ${bold(service.name)} (version: ${service.version}) in ${((Date.now() - deployStart)/1000).toFixed(2)} seconds.`))
+					console.log(success(`App successfully deployed in project ${bold(bucket.projectId)} in App Engine's service ${bold(service.name)} (version: ${service.version}) in ${((Date.now() - deployStart)/1000).toFixed(2)} seconds.`))
 					return { 
 						operationId, 
 						versionUrl,
@@ -462,6 +465,34 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		})
 })
 
+/**
+ * IMPORTANT - DO NOT MANUALLY CREATE THE BUCKET NAME OR ZIP NAME OUTSIDE OF THIS
+ * FUNCTION. THESE CONVENTIONS ARE CRITICAL TO RESTORE FAILED DEPLOYMENTS!
+ * @param  {[type]} serviceVersion [description]
+ * @return {[type]}                [description]
+ */
+const _initDeploymentAssets = (projectId, serviceVersion) => {
+	const deploymentId = `neapup-${serviceVersion}-filescount`.toLowerCase()
+	return {
+		bucket: { 
+			name: deploymentId, 
+			projectId 
+		},
+		zip: { 
+			name: 'neapup.zip'
+		}
+	}
+}
+
+const _updateDeploymentId = (servive, bucket, zip, filesCount) => {
+	zip.filesCount = filesCount
+	if (bucket && bucket.name)
+		bucket.name = bucket.name.replace('-filescount', `-${filesCount || 0}`)
+	if (servive && servive.version)
+		servive.version = `${servive.version}-${filesCount || 0}`
+}
+
+
 const _createBucket = (projectId, bucketName, token, options={}) => {
 	const bucketCreationDone = wait('Creating new deployment bucket')
 	return gcp.bucket.create(bucketName, projectId, token, { debug: options.debug, verbose: false })
@@ -540,7 +571,7 @@ const _deleteAppVersions = (projectId, nbr=10, options={}) => getToken(options).
 const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 	waitDone = wait(`Deploying nodejs app to project ${bold(bucket.projectId)} under App Engine's service ${bold(service.name)} version ${bold(service.version)}`)
 	return appHosting.get(options.projectPath, options).then(hostingConfig => {
-		return gcp.app.deploy({ bucket, zip }, service, token, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
+		return gcp.app.deploy(bucket.projectId, service.name, service.version, bucket.name, zip.name, zip.filesCount, token, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
 			if (!data.operationId) {
 				const msg = 'Unexpected response. Could not determine the operationId used to check the deployment status.'
 				console.log(error(msg))

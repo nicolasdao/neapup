@@ -550,22 +550,37 @@ const createApp = (projectId, regionId, token, options={ debug:false }) => _vali
 })
 
 
-const APP_JSON = ['name','id','inboundServices','instanceClass','network','zones','resources','runtime','runtimeChannel','threadsafe','vm','betaSettings','env','servingStatus','createdBy','createTime','diskUsageBytes','runtimeApiVersion','handlers','errorHandlers','libraries','apiConfig','envVariables','defaultExpiration','healthCheck','readinessCheck','livenessCheck','nobuildFilesRegex','deployment','versionUrl','endpointsApiService','automaticScaling','basicScaling','manualScaling']
+const APP_JSON = ['id','inboundServices','instanceClass','network','zones','resources','runtime','runtimeChannel','threadsafe','vm','betaSettings','env','servingStatus','runtimeApiVersion','handlers','errorHandlers','libraries','apiConfig','envVariables','defaultExpiration','healthCheck','readinessCheck','livenessCheck','nobuildFilesRegex','deployment','endpointsApiService','automaticScaling','basicScaling','manualScaling']
 const _filterAppJsonFields = appJson => {
 	if (!appJson)
 		return {}
-	return APP_JSON.reduce((acc, key) => {
+	let cfg = APP_JSON.reduce((acc, key) => {
 		const v = appJson[key]
 		if (v)
 			acc[key] = v 
 		return acc
 	}, {})
+
+	if (cfg.betaSettings && (cfg.env == 'flexible' || cfg.env == 'flex'))
+		delete cfg.betaSettings
+
+	return cfg
 }
 
-const deployApp = (source, service, token, options={}) => Promise.resolve(null).then(() => {
-	const { bucket, zip } = source || {}
-	const { name:serviceName='default' , version } = service || {}
-	_validateRequiredParams({ bucketName: bucket.name, projectId: bucket.projectId, zipName: zip.name, zipFilesCount: zip.filesCount, version, token })
+/**
+ * [description]
+ * @param  {[type]}   projectId     [description]
+ * @param  {[type]}   operationId   [description]
+ * @param  {[type]}   token         [description]
+ * @param  {[type]}   onSuccess     [description]
+ * @param  {[type]}   onFailure     [description]
+ * @param  {Function} options.interval      default: 4000
+ * @param  {Function} options.timeOut      	default: 300000
+ * @return {[type]}                 [description]
+ */
+const deployApp = (projectId, service, version, bucket, zipFile, fileCount, token, options={}) => Promise.resolve(null).then(() => {
+	service = service || 'default'
+	_validateRequiredParams({ bucket, projectId, zipFile, fileCount, version, token })
 
 	const env = ((options.hostingConfig || {}).env || '').toLowerCase().trim() 
 	let appJson = _filterAppJsonFields(Object.assign({}, options.hostingConfig || {}, {
@@ -573,27 +588,78 @@ const deployApp = (source, service, token, options={}) => Promise.resolve(null).
 		runtime: env == 'flex' || env == 'flexible' ? 'nodejs' : 'nodejs8',
 		deployment: {
 			zip: {
-				sourceUrl: `https://storage.googleapis.com/${bucket.name}/${zip.name}`,
-				filesCount: zip.filesCount
+				sourceUrl: `https://storage.googleapis.com/${bucket}/${zipFile}`,
+				filesCount: fileCount
 			}
 		}
 	}))
 
-	// console.log(appJson)
-	// throw new Error('dewde')
+	const payload = JSON.stringify(appJson, null, ' ')
 
-	_showDebug(`Deploying service to Google Cloud Platform's project ${bold(bucket.projectId)}.\n${JSON.stringify(appJson, null, ' ')}`, options)
+	_showDebug(`Deploying service to Google Cloud Platform's project ${bold(projectId)}.\n${payload}`, options)
 
-	return fetch.post(DEPLOY_APP_URL(bucket.projectId, serviceName), {
+	return fetch.post(DEPLOY_APP_URL(projectId, service), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
-	},
-	JSON.stringify(appJson), options).then(res => {
-		_showDebug(`Deployment has started. Details: ${options.debug ? JSON.stringify(res.data, null, ' ') : ''}`, options)
-		if (res.data && res.data.name)
-			res.data.operationId = res.data.name.split('/').slice(-1)[0]
-		return res
-	})
+	}, payload, objectHelper.merge(options, { verbose: false }))
+		.then(res => {
+			_showDebug(`Deployment has started. Details: ${options.debug ? JSON.stringify(res.data, null, ' ') : ''}`, options)
+			if (res.data && res.data.name)
+				res.data.operationId = res.data.name.split('/').slice(-1)[0]
+			return res
+		})
+		.then(res => {
+			if (options.confirm) {
+				const opts = objectHelper.merge(options, { interval: 15*1000, timeOut: 10*60*1000 })
+				const action = _checkOperation(projectId, res.data.operationId, token, null, null, opts)
+				
+				return action
+					.then(opRes => {
+						if (opRes && opRes.error) {
+							const msg = `Fail to determine the operation status for service ${bold(service)} version ${bold(version)}`
+							console.log(error(msg))
+							throw new Error(msg)
+						}
+						options.deployRetryCount = 0
+						res.data.operation = opRes.data
+						return { status: opRes.status, data: res.data }
+					})
+
+			} else {
+				options.deployRetryCount = 0
+				return res
+			}
+		})
+		.catch(e => {
+			let er = {}
+			if (e.code && e.message)
+				er = e 
+			else {
+				try {
+					er = JSON.parse(e.message)
+				} catch(_e) {
+					(() => {
+						throw e 
+					})(_e)
+				}
+			}
+
+			const retryExceeded = options.deployRetryCount && options.deployRetryCount > 30
+
+			if (!retryExceeded && er.code == 409 && (er.message || '').toLowerCase().indexOf('operation is already in progress') >= 0) {
+				if (!options.deployRetryCount)
+					options.deployRetryCount = 1
+				else
+					options.deployRetryCount++
+
+				_showDebug(`Retrying (attempt: ${options.deployRetryCount}) to deploy service to Google Cloud Platform's project ${bold(projectId)}.\n${payload}`, options)
+				return promise.delay(10000).then(() => deployApp(projectId, service, version, bucket, zipFile, fileCount, token, options))
+			}
+			else {
+				options.deployRetryCount = 0
+				throw e
+			}
+		})
 })
 
 const checkOperationStatus = (projectId, operationId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
@@ -704,11 +770,12 @@ const listServices = (projectId, token, options={ debug:false, includeVersions:f
 // 2.2. MAIN - END
 
 // 2.1. VERSIONS - START
-const getServiceVersion = (projectId, service, version, token, options={ debug:false }) => Promise.resolve(null).then(() => {
+const getServiceVersion = (projectId, service, version, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ service, projectId, version, token })
 	_showDebug(`Requesting version ${bold(version)} from service ${bold(service)} for Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	return fetch.get(APP_SERVICE_VERSION_URL(projectId, service, version), {
+	const uri = `${APP_SERVICE_VERSION_URL(projectId, service, version)}${options.fullView ? '?view=FULL' : ''}`
+	return fetch.get(uri, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	})
@@ -751,7 +818,9 @@ const _createUpdateMaskQuery = patch => {
  * @param  {[type]} service   [description]
  * @param  {[type]} version   [description]
  * @param  {[type]} token     [description]
- * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
+ * @param  {Boolean} options.confirm   		Default is false. When set to true, will wait for confrimation
+ * @param  {Function} options.interval      default: 4000
+ * @param  {Function} options.timeOut      	default: 300000
  * @return {[type]}           [description]
  */
 const updateServiceVersion = (projectId, service, version, token, patch={}, options={}) => Promise.resolve(null).then(() => {
@@ -802,6 +871,9 @@ const updateServiceVersion = (projectId, service, version, token, patch={}, opti
  * @return {[type]}           [description]
  */
 const minimizeBilling = (projectId, service, version, token, options={}) => getServiceVersion(projectId, service, version, token, options).then(({ data }) => {
+	if (data.servingStatus == 'STOPPED' && !options.force)
+		return { status: 200, data: { versionStatus: 'STOPPED' } }
+	
 	const isStandard = !data.env || data.env == 'standard'
 	const isAutoScaling = data.automaticScaling
 	const patch = isStandard && isAutoScaling 
@@ -836,19 +908,32 @@ const stopVersion = (projectId, service, version, token, options={}) => minimize
  * @param  {Boolean} options.confirm   Default is false. When set to true, will wait for confrimation
  * @return {[type]}           [description]
  */
-const startVersion = (projectId, service, version, token, options={}) => getServiceVersion(projectId, service, version, token, options).then(({ data }) => {
-	const isStandard = !data.env || data.env == 'standard'
-	if (isStandard)
-		return { status: 200, data: { versionStatus: 'SERVING' } }
+const startVersion = (projectId, service, version, token, options={}) => 
+	getServiceVersion(projectId, service, version, token, objectHelper.merge(options, { fullView: true })).then(({ data }) => {
+		_validateRequiredParams({ projectId, service, version, token })
+		const isStandard = !data.env || data.env == 'standard'
+		if (isStandard || (data.servingStatus == 'SERVING' && !options.force))
+			return { status: 200, data: { versionStatus: 'SERVING' } }
 
-	const patch = { servingStatus: 'SERVING' }
-	return updateServiceVersion(projectId, service, version, token, patch, objectHelper.merge(options, { verbose: false }))
-		.then(res => {
-			if (res && res.data)
-				res.data.versionStatus = 'SERVING'
-			return res
-		})
-})
+		const patch = { servingStatus: 'SERVING' }
+		return updateServiceVersion(projectId, service, version, token, patch, objectHelper.merge(options, { verbose: false }))
+			.then(res => {
+				if (res && res.data)
+					res.data.versionStatus = 'SERVING'
+				return res
+			})
+			.then(res => {
+				if (options.redeploy) {
+					const bucket = `neapup-${version}`//neapup-v20180928-021122-42
+					const fileCount = version.split('-').slice(-1)[0] * 1
+					let opts = objectHelper.merge(options, { confirm: true })
+					opts.hostingConfig = data
+					opts.hostingConfig.servingStatus == 'SERVING'
+					return deployApp(projectId, service, version, bucket, 'neapup.zip', fileCount, token, opts)
+				} else
+					return res
+			})
+	})
 
 const deleteServiceVersion = (projectId, service, version, token, options={ debug:false }) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, service, version, token })
@@ -940,6 +1025,17 @@ const getBuild = (projectId, buildId, token, options={}) => Promise.resolve(null
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * [description]
+ * @param  {[type]}   projectId     [description]
+ * @param  {[type]}   operationId   [description]
+ * @param  {[type]}   token         [description]
+ * @param  {[type]}   onSuccess     [description]
+ * @param  {[type]}   onFailure     [description]
+ * @param  {Function} options.interval      default: 4000
+ * @param  {Function} options.timeOut      	default: 300000
+ * @return {[type]}                 [description]
+ */
 const _checkOperation = (projectId, operationId, token, onSuccess, onFailure, options) => promise.check(
 	() => checkOperationStatus(projectId, operationId, token, options).catch(e => {
 		console.log(error(`Unable to check operation status. To manually check that status, go to ${link(`https://console.cloud.google.com/cloud-build/builds?project=${projectId}`)}`))
@@ -957,6 +1053,17 @@ const _checkOperation = (projectId, operationId, token, onSuccess, onFailure, op
 			return false
 	}, options)
 
+/**
+ * [description]
+ * @param  {[type]}   projectId     [description]
+ * @param  {[type]}   operationId   [description]
+ * @param  {[type]}   token         [description]
+ * @param  {[type]}   onSuccess     [description]
+ * @param  {[type]}   onFailure     [description]
+ * @param  {Function} options.interval      default: 4000
+ * @param  {Function} options.timeOut      	default: 300000
+ * @return {[type]}                 [description]
+ */
 const _checkServiceAPIOperation = (operationId, token, onSuccess, onFailure, options) => promise.check(
 	() => checkServiceOperationStatus(operationId, token, options).catch(e => {
 		console.log(error('Unable to check service API operation status.'))
@@ -989,22 +1096,6 @@ const _checkVersionServingStatus = (projectId, service, version, status='SERVING
 		} else 
 			return false
 	}, options)
-
-// /// ? { automaticScaling: { minIdleInstances: 0, standardSchedulerSettings: { minInstances: 0 } } }
-// const _checkVersionServingStatus = (projectId, service, version, status='SERVING', token, onSuccess, onFailure, options) => promise.check(
-// 	() => getServiceVersion(projectId, service, version, token, options), 
-// 	({ data }) => {
-// 		console.log(JSON.stringify(data, null, '  '))
-// 		if (data && data.servingStatus == status) {
-// 			if (onSuccess) onSuccess(data)
-// 			return { message: 'done' }
-// 		}
-// 		else if (data && data.code && data.message) {
-// 			if (onFailure) onFailure(data)
-// 			return { error: data }
-// 		} else 
-// 			return false
-// 	}, options)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -16,7 +16,7 @@ const { error, exec, debugInfo, cmd, bold, link, info, warn } = require('./conso
 const { collection } = require('./core')
 
 const TEMP_FOLDER = join(homedir(), 'temp/neapup')
-const FILES_BLACK_LIST = ['.DS_Store']
+const FILES_BLACK_LIST = ['.DS_Store', '.git']
 const FILES_REQUIRED_LIST = ['package.json']
 const MAX_FILE_COUNT_PER_STANDARD_PROJECT = 10000
 const MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER = 1000
@@ -98,7 +98,8 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 			const extraFiles = (options.files || []).filter(x => x && x.name && x.content)
 			const extraFullPathFiles = extraFiles.map(x => ({ name: join(dst, x.name), content: x.content }))
 			const blackList = [...extraFiles, ...FILES_BLACK_LIST]
-			const all_files = files.filter(f => !blackList.some(file => basename(f) == file))		
+			const all_files = files.filter(f => !blackList.some(file => basename(f) == file))
+
 			const filesCount = all_files.length + extraFiles.length
 
 			// 2. Making sure all the required files are defined

@@ -82,24 +82,28 @@ program
 	})
 
 program
-	.command('stop <service>')
+	.command('stop [service]')
 	.usage('. This stops a service or a service\'s specific version.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.option('-v, --version <version>', 'Stops a version')
 	.option('-p, --project <project>', 'Helps stopping a service faster')
+	.option('-f, --force', 'Forces to stop even if the versions indicates it is already stopped')
 	.action((service, options) => {
-		return manage.service.stop(service, { debug: options.debug, projectId: options.project, version: options.version })
+		const v = typeof(options.version) == 'function' ? null : options.version
+		return manage.service.stop(service, { debug: options.debug, projectId: options.project, version: v, force: options.force })
 			.then(() => process.exit())
 	})
 
 program
-	.command('start <service>')
+	.command('start [service]')
 	.usage('. This starts a service or a service\'s specific version.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.option('-v, --version <version>', 'Starts a version')
 	.option('-p, --project <project>', 'Helps starting a service faster')
+	.option('-f, --force', 'Forces to serve even if the versions indicates it is already serving')
 	.action((service, options) => {
-		return manage.service.start(service, { debug: options.debug, projectId: options.project, version: options.version })
+		const v = typeof(options.version) == 'function' ? null : options.version
+		return manage.service.start(service, { debug: options.debug, projectId: options.project, version: v, force: options.force })
 			.then(() => process.exit())
 	})
 
