@@ -1,0 +1,29 @@
+{
+	"name": "hello",
+	"db": {
+		"ip": "0.0.0.0",
+		"name": "housi-local",
+		"blackListedIps": ["2.2.2.","3.3.3."],
+		"author": {
+			"name": "Nic",
+			"company": "Neap"
+		}
+	},
+	"hosting": {
+		"handlers": [{
+			"urlRegex": ".*",
+			"script": {
+				"scriptPath": "index.js"
+			}
+		}],
+		"projectId": "neapers-92845",
+		"service": "default",
+		"provider": "google",
+		"instanceClass": "B2",
+		"basicScaling": {
+			"maxInstances": 3
+		}
+	},
+	"runtime": "nodejs",
+	"branch": "master"
+}

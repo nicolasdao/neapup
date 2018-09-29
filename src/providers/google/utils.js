@@ -13,7 +13,7 @@ const { askQuestion, bold, info, question, promptList, wait, success, error, lin
 const { promise, collection, obj, file } = require('../../utils')
 const gcp = require('./gcp')
 const projectHelper = require('./project')
-const { hosting: appHosting } = require('./config')
+const { hosting: appHosting, appJson: appJsonHelper } = require('./config')
 const { getHandlers } = require('./deploy')
 
 const ALT_QUESTION = (env) => `Configure another setting in the ${env ? `app.${env}.json` : 'app.json'}:`
@@ -645,11 +645,16 @@ const _updateRoot = (answers={}, options={}) => Promise.resolve(null).then(() =>
 						if (yes == 'n')
 							return _updateRoot(answers, options)
 						else
-							return appHosting.save(answers, options.projectPath, { env: envName })
-								.then(() => {
-									console.log(success(`${bold(fileName)} successfully saved`))
-									options.multipleConfig = true
-									return _updateRoot(answers, options)
+							return appJsonHelper.get(options.projectPath, { env: envName })
+								.then(appJsonConfig => {
+									appJsonConfig = appJsonConfig || {}
+									appJsonConfig.hosting = answers
+									return appJsonHelper.save(appJsonConfig, options.projectPath, { env: envName })
+										.then(() => {
+											console.log(success(`${bold(fileName)} successfully saved`))
+											options.multipleConfig = true
+											return _updateRoot(answers, options)
+										})
 								})
 					})
 			})

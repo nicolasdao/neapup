@@ -71,6 +71,71 @@ const _mergeHostingConfigs = (...hostingConfigs) => {
 	return hosting
 }
 
+/**
+ * Make sure the properties of the hosting config are consistent with the environment (standard or flexible)
+ * @param  {Object} hosting [description]
+ * @return {Object}         [description]
+ */
+const mergeAppJsons = (...appJsons) => {
+	if (appJsons.length == 0)
+		return {}
+
+	// 1. Get the master config, i.e., the one that's supposed to override
+	const masterConfig = appJsons.slice(-1)[0] || {}
+	// 2. Make sure that the master hosting config is legit. 
+	const masterHostingConfig = masterConfig.hosting || {}
+	const scalingConfigCount = [masterHostingConfig.automaticScaling, masterHostingConfig.basicScaling, masterHostingConfig.manualScaling].filter(x => x).length
+	if (scalingConfigCount > 1) {
+		console.log(error(`Invalid hosting config. The following properties are mutually exclusive: ${bold('automaticScaling')}, ${bold('basicScaling')}, ${bold('manualScaling')}. ${JSON.stringify(masterHostingConfig, null, ' ')}`))
+		throw new Error('Invalid hosting config.')
+	}
+
+	// 3. Merge appJsons into one
+	let appJson = obj.merge(...appJsons.map(x => x || {}))
+	// 4. Make sure that the merged hosting config is consistent with respect to its env. (standard vs flexible)
+	let hosting = appJson.hosting || {}
+	if (!hosting.env || hosting.env == 'standard') {
+		delete hosting.network
+		delete hosting.resources
+		delete hosting.healthCheck
+		if (hosting.automaticScaling) {
+			delete hosting.automaticScaling.coolDownPeriod
+			delete hosting.automaticScaling.cpuUtilization
+			delete hosting.automaticScaling.minTotalInstances
+			delete hosting.automaticScaling.maxTotalInstances
+			delete hosting.automaticScaling.requestUtilization
+			delete hosting.automaticScaling.diskUtilization
+			delete hosting.automaticScaling.networkUtilization
+		}
+	} else { // flexible
+		delete hosting.instanceClass
+		if (hosting.automaticScaling) 
+			delete hosting.automaticScaling.standardSchedulerSettings
+	}
+
+	// 3. Make sure that the merged hosting config has only inherited the master hosting config's scaling type
+	const multipleScalingConfig = [hosting.automaticScaling, hosting.basicScaling, hosting.manualScaling].filter(x => x).length > 1
+	if (multipleScalingConfig) {
+		if (masterHostingConfig.automaticScaling) {
+			delete hosting.basicScaling
+			delete hosting.manualScaling
+		} else if (masterHostingConfig.basicScaling) {
+			delete hosting.automaticScaling
+			delete hosting.manualScaling
+		} else if (masterHostingConfig.manualScaling) {
+			delete hosting.basicScaling
+			delete hosting.automaticScaling
+		} else {
+			delete hosting.automaticScaling
+			delete hosting.basicScaling
+			delete hosting.manualScaling
+		}
+	}
+
+	appJson.hosting = hosting
+	return appJson
+}
+
 const resetHostingConfig = (hostingConfig) => {
 	if (!hostingConfig)
 		return 
@@ -91,14 +156,23 @@ const resetHostingConfig = (hostingConfig) => {
  * @param  {Boolean} options.envOnly 	[description]
  * @return {[type]}         			[description]
  */
-const getHosting = (appPath, options={}) => {
-	const main = file.getJson(path.join(appPath, 'app.json')).then(config => ((config || {}).hosting || {}))
-	const second = options.env ? file.getJson(path.join(appPath, `app.${options.env}.json`)).then(config => ((config || {}).hosting || {})) : Promise.resolve({})
+const getHosting = (appPath, options={}) => getAppJson(appPath, options).then(appJson => (appJson || {}).hosting || {})
+
+/**
+ * [description]
+ * @param  {String}  appPath 			[description]
+ * @param  {String}  options.env 		[description]
+ * @param  {Boolean} options.envOnly 	[description]
+ * @return {[type]}         			[description]
+ */
+const getAppJson = (appPath, options={}) => {
+	const main = file.getJson(path.join(appPath, 'app.json')).then(config => config || {})
+	const second = options.env ? file.getJson(path.join(appPath, `app.${options.env}.json`)).then(config => config || {}) : Promise.resolve({})
 	return Promise.all([main, second]).then(values => {
 		if (options.env && options.envOnly) 
-			return values[1]
+			return values[1] || {}
 		else
-			return _mergeHostingConfigs(...values)
+			return mergeAppJsons(...values) || {}
 	})
 }
 
@@ -142,6 +216,33 @@ const saveHosting = (hosting, appPath, options={}) => Promise.all([
 		}
 	})
 
+const saveAppJson = (appJson, appPath, options={}) => 
+	file.getJson(path.join(appPath, 'app.json'))
+		.then(mainAppJson => {
+			mainAppJson = mainAppJson || {}
+			if (!options.env) { // Simple case of the app.json
+				if (appJson && !appJson.hosting) appJson.hosting = {}
+				if (appJson && appJson.hosting) {
+					appJson.hosting.provider = appJson.hosting.provider || 'google'
+					appJson.hosting.service = appJson.hosting.service || 'default'
+				}
+				return file.write(path.join(appPath, 'app.json'), JSON.stringify(appJson, null, '  '))
+			} else { // more complex case of an additinal env. We need to diff. with the app.json to only keep the diff in the app.<env>.json
+				const action = (!mainAppJson.hosting || !mainAppJson.hosting.provider || !mainAppJson.hosting.service) 
+					? ((() => {
+						mainAppJson.hosting = mainAppJson.hosting || {}
+						mainAppJson.hosting.provider = mainAppJson.provider || 'google'
+						mainAppJson.hosting.service = mainAppJson.service || 'default'
+						return file.write(path.join(appPath, 'app.json'), JSON.stringify(mainAppJson, null, '  '))
+					})())
+					: Promise.resolve(null)
+
+				return action.then(() => {
+					const hostingDiff = obj.diff(mainAppJson, appJson)
+					return file.write(path.join(appPath, `app.${options.env}.json`), JSON.stringify(hostingDiff, null, '  '))
+				})
+			}
+		})
 
 const updateHosting = (hosting, appPath, options={}) => !appPath ? Promise.resolve(null) : Promise.all([
 	file.getJson(path.join(appPath, 'app.json')),
@@ -190,6 +291,10 @@ const filterAppJsonFields = appJson => {
 }
 
 module.exports = {
+	appJson: {
+		'get': getAppJson,
+		save: saveAppJson
+	},
 	hosting: {
 		'get': getHosting,
 		save: saveHosting,
@@ -198,5 +303,8 @@ module.exports = {
 		sanitize: obj => _mergeHostingConfigs(filterAppJsonFields(obj)),
 		toYaml: obj => yaml.objToYaml(_mergeHostingConfigs(filterAppJsonFields(obj))),
 		reset: resetHostingConfig
+	},
+	_:{
+		mergeAppJsons
 	}
 }

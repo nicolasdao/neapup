@@ -8,7 +8,8 @@
     "globals": {
         "process": false,
         "describe": false,
-        "it": false
+        "it": false,
+        "__dirname": false
     },
     "parserOptions": {
         "sourceType": "module"
