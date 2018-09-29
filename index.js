@@ -12,9 +12,9 @@
 
 const program = require('commander')
 const { deploy, list, configure, clean, manage } = require('./src')
+const { bold, cyan } = require('./src/utils/console')
 
 program
-	.version('1.0.0')
 	.command('configure [opt1] [opt2]')
 	.alias('cf')
 	.usage('. This command helps you to configure an app.json file in your project. This file contains hosting informations.')
@@ -97,7 +97,30 @@ const _getParams = (...options) => {
 	return { projectPath, provider }
 }
 
-program.parse(process.argv)
+const emptyCommand = process.argv.length == 2
+const versionCommand = !emptyCommand && process.argv.length == 3 && (process.argv[2] == '-v' || process.argv[2] == '--version')
+const helpCommand = !emptyCommand && process.argv.length == 3 && (process.argv[2] == '-h' || process.argv[2] == '--help')
+
+if (emptyCommand || helpCommand) {
+	console.log(' ')
+	console.log('   ╭────────────────────────╮')
+	console.log('   │                        │')
+	console.log(`   │   ${bold('Welcome to NeapUp!')}   │`)
+	console.log('   │                        │')
+	console.log('   ╰────────────────────────╯')
+	console.log('')
+	console.log('Here is a list of commands that will make your day awesome:\n')
+	console.log(`${cyan('neap up')} - Run this command in your project, answer a few questions and that's it! You're in the cloud :)`)
+	console.log(`${cyan('neap ls')} - List stuffs from your account`)
+	console.log(`${cyan('neap cf')} - Configure new or existing app.json files in you current project`)
+	console.log(`${cyan('neap start')} - Start a service`)
+	console.log(`${cyan('neap stop')} - Stop a service`)
+	console.log(`${cyan('neap clean')} - Helps you cleaning your account from leakages (i.e., services that you pay for though they don't serve any traffic)`)
+} else if (versionCommand) {
+	const pack = require('./package.json')
+	console.log(pack.version)
+} else
+	program.parse(process.argv)
 
 
 

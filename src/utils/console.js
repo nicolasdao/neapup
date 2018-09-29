@@ -188,6 +188,7 @@ module.exports = {
 	askQuestion,
 	bold,
 	cmd,
+	cyan,
 	debugInfo: debugInfo,
 	error,
 	exec: execCommand,
