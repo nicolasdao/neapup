@@ -7,7 +7,6 @@
 */
 
 const path = require('path')
-const { login } = require('./account')
 const getToken = require('./getToken')
 const authConfig = require('../../utils/authConfig')
 const { askQuestion, bold, info, question, promptList, wait, success, error, link, warn, debugInfo } = require('../../utils/console')
@@ -41,7 +40,8 @@ const confirmCurrentProject = (options={ debug:false, selectProject: false }) =>
 			// 1.1. If there is no OAuth config for Google yet, then prompt the user to consent.
 			if (!accessToken || !refreshToken) {
 				console.log(info('You don\'t have any Google OAuth saved yet. Requesting consent now...'))
-				return login(options)
+				return getToken(Object.assign({}, options || {}, { refresh: true, origin: 'login' }))
+					.then(() => projectHelper.updateCurrent(options))
 			// 1.2. If there is no projectId, select one.
 			} else if (!projectId) {
 				return projectHelper.updateCurrent(options)
@@ -98,11 +98,12 @@ const configure = (options={}) => Promise.resolve(null).then(() => {
 			const action = Object.keys(hostingConfig || {}).length == 0 // hosting does not exist
 				? () => {
 					fileAlreadyExists = false
-					console.log(warn(`No ${bold(configFileName)} file found.`))
+					console.log(warn(`${bold(configFileName)} file not found.`))
 					return askQuestion(question(`Do you want to create an ${bold(configFileName)} (Y/n)? `)).then(answer => {
 						if (answer == 'n')
 							process.exit()
 						return confirmCurrentProject(options)
+							.then(() => appHosting.get(options.projectPath, options))
 					})
 				}
 				: () => Promise.resolve(hostingConfig || {})
@@ -176,17 +177,36 @@ const _chooseHandlerFile = (handlers, files=[]) => Promise.resolve(null).then(()
 	}
 })
 
-const _updateHostingConfigHandlers = (hostingConfig, handlers, options) => {
+const _updateHostingConfig = (hostingConfig, projectId, handlers, options) => {
 	hostingConfig.handlers = handlers 
-	return appHosting.update({ handlers }, options.projectPath, options)
+	let props = { handlers }
+	if (!hostingConfig.projectId) {
+		hostingConfig.projectId = projectId
+		props.projectId = projectId
+	}
+	if (!hostingConfig.service) {
+		hostingConfig.service = 'default'
+		props.service = 'default'
+	}
+	if (!hostingConfig.provider) {
+		hostingConfig.provider = 'google'
+		props.provider = 'google'
+	}
+	return appHosting.update(props, options.projectPath, options)
 		.then(() => hostingConfig)
 }
 
-const _confirmAppJson = (hostingConfig={}, options={}) => Promise.resolve(null).then(() => {
+/**
+ * Helps building an app.json if non exists so far
+ * @param  {Object} hostingConfig [description]
+ * @param  {Object} options       [description]
+ * @return {[type]}               [description]
+ */
+const _initializeAppJson = (projectId, hostingConfig={}, options={}) => Promise.resolve(null).then(() => {
 	if (options.projectPath) {
 		return file.getFiles(options.projectPath, options)
 			.then(allFiles => getHandlers(hostingConfig, allFiles))
-			.then(handlers => _updateHostingConfigHandlers(hostingConfig, handlers, options))
+			.then(handlers => _updateHostingConfig(hostingConfig, projectId, handlers, options))
 			.catch(e => {
 				if (e.code == 404) { // Files not found. Handler scripts are referencing missing files.
 					console.log(error(e.message))
@@ -203,12 +223,12 @@ const _confirmAppJson = (hostingConfig={}, options={}) => Promise.resolve(null).
 					} else {
 						console.log(warn('There is no \'app.js\', \'index.js\' or \'server.js\' in the root directory of your project.'))
 						return _chooseHandlerFile(hostingConfig.handlers, suggestedFiles)
-							.then(handlers => _updateHostingConfigHandlers(hostingConfig, handlers, options))
+							.then(handlers => _updateHostingConfig(hostingConfig, projectId, handlers, options))
 					}
 				} else if (e.code == 502) { // Ambiguous files. Cannot decide which file should be used to start the server.
 					console.log(warn(e.message))
 					return _chooseHandlerFile(hostingConfig.handlers, e.handlers[0].files)
-						.then(handlers => _updateHostingConfigHandlers(hostingConfig, handlers, options))
+						.then(handlers => _updateHostingConfig(hostingConfig, projectId, handlers, options))
 				} else if (e.code == 503) { // Missing required 'package.json'. A nodejs project must have one.
 					console.log(error(e.message))
 					process.exit()
@@ -219,7 +239,7 @@ const _confirmAppJson = (hostingConfig={}, options={}) => Promise.resolve(null).
 })
 
 const _confirmAppEngineIsReady = (projectId, token, options={}) => (options.projectPath ? appHosting.get(options.projectPath, options) : Promise.resolve({}))
-	.then(hostingConfig => _confirmAppJson(hostingConfig, options))
+	.then(hostingConfig => _initializeAppJson(projectId, hostingConfig, options))
 	.then((hostingConfig={}) => {
 		const appProjectId = hostingConfig.projectId
 		const appService = hostingConfig.service || 'default'
@@ -624,14 +644,13 @@ const _updateRoot = (answers={}, options={}) => Promise.resolve(null).then(() =>
 					.then(yes => {
 						if (yes == 'n')
 							return _updateRoot(answers, options)
-						else {
+						else
 							return appHosting.save(answers, options.projectPath, { env: envName })
 								.then(() => {
 									console.log(success(`${bold(fileName)} successfully saved`))
 									options.multipleConfig = true
 									return _updateRoot(answers, options)
 								})
-						} 
 					})
 			})
 		}
@@ -1205,14 +1224,14 @@ const _getDisplayableHostingConfig = (hostingConfig, indent='') => {
 		return acc
 	}, {})
 
-	const output = JSON.stringify(_removeEmptyObjectProperties(sortedHosting), null, '  ')
+	const output = ['', ...JSON.stringify(_removeEmptyObjectProperties(sortedHosting), null, '  ')
 		.replace(/(\{|\}|"|,|\[|\])/g, '') // Remove { } [ ] , " 
 		.split('\n') // 
 		.filter(x => x.trim())
 		.map(x => {
 			const [label, ...values] = x.split(':')
 			return `${label}: ${bold(values.join(':').trim())}`
-		})
+		})]
 		.join(`\n${indent}`)
 
 	return `${output}\n`

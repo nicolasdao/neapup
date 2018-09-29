@@ -11,28 +11,12 @@
 'use strict'
 
 const program = require('commander')
-const { cmd, info } = require('./src/utils/console')
-const { login } = require('./src/providers/google/account')
 const { deploy, list, configure, clean, manage } = require('./src')
 
 program
 	.version('1.0.0')
-	.command('login [provider]')
-	.usage(`. This command logs the user to his/her Google Cloud (${cmd('neap login google')}) or AWS (${cmd('neap login aws')}) account. Default is 'google' (${cmd('neap login')}). `)
-	.option('-d, --debug', 'Show debugging messages.')
-	.action((provider='google', options) => {
-		if (provider == 'google')
-			return login({ debug: options.debug })
-				.then(() => {
-					console.log(info('Awesome! You\'re now logged in.'))
-					console.log(info(`If you want to switch to another project, simply type ${cmd('neap switch')}.`))
-					process.exit()
-				})
-	})
-
-program
 	.command('configure [opt1] [opt2]')
-	.alias('cfg')
+	.alias('cf')
 	.usage('. This command helps you to configure an app.json file in your project. This file contains hosting informations.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')
