@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.3"></a>
+## [0.22.3](https://gitlab.com/neap/neap-manager/compare/v0.22.2...v0.22.3) (2018-09-29)
+
+
+### Bug Fixes
+
+* Weird format when creating an app.json for the first time ([9634fa5](https://gitlab.com/neap/neap-manager/commit/9634fa5))
+
+
+
 <a name="0.22.2"></a>
 ## [0.22.2](https://gitlab.com/neap/neap-manager/compare/v0.22.1...v0.22.2) (2018-09-28)
 
