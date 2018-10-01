@@ -15,7 +15,7 @@ const { promise, date, obj, collection }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
 const getToken = require('../getToken')
-const { hosting: appHosting } = require('../config')
+const { hosting: appHostingHelper, appJson: appJsonHelper } = require('../config')
 
 const FLEX_SERVICE_API = 'appengineflex.googleapis.com'
 const QUOTAS_URL = 'https://console.cloud.google.com/iam-admin/quotas'
@@ -93,17 +93,20 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 			//////////////////////////////
 			// 2. Zip project 
 			//////////////////////////////
-			return appHosting.get(options.projectPath, options)
-				.then(hostingConfig => {
+			return appJsonHelper.get(options.projectPath, options)
+				.then(appJsonConfig => {
 					// 3.1. Create app.yaml for flexible environment 
-					const hostConfig = hostingConfig || {}
+					appJsonConfig = appJsonConfig || {}
+					const hostConfig = appJsonConfig.hosting || {}
 					options.costReduction = hostConfig['cost-reduction']
 					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
 					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
 					const extraFiles = deployingToFlex
-						? { files: [{ name: 'app.yaml', content: appHosting.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) }] } 
-						: {}
+						? { files: [{ name: 'app.yaml', content: appHostingHelper.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) }] } 
+						: { files: []}
+
+					extraFiles.files.push({ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') })
 
 					// 3.2. Check quotas for Standard env.
 					const checkQuotas = deployingToFlex || (hostConfig.ignore && hostConfig.ignore['quotas-warning'])
@@ -430,7 +433,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 				// 12. Potentially save the app.json
 				////////////////////////////////////
 				.then(() => _testEnv(options.projectPath, obj.merge(options, { noPrompt: true })))
-				.then(envExists => appHosting.get(options.projectPath, options).then(hostingConfig => {
+				.then(envExists => appHostingHelper.get(options.projectPath, options).then(hostingConfig => {
 					hostingConfig = hostingConfig || {}
 					const appProjectId = hostingConfig.projectId
 					const appService = hostingConfig.service
@@ -451,7 +454,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 							if (answer == 'n')
 								return
 							else {
-								return appHosting.save({ projectId, service: service.name }, options.projectPath, options)
+								return appHostingHelper.save({ projectId, service: service.name }, options.projectPath, options)
 							}
 						})
 					} else
@@ -570,7 +573,7 @@ const _deleteAppVersions = (projectId, nbr=10, options={}) => getToken(options).
 
 const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 	waitDone = wait(`Deploying nodejs app to project ${bold(bucket.projectId)} under App Engine's service ${bold(service.name)} version ${bold(service.version)}`)
-	return appHosting.get(options.projectPath, options).then(hostingConfig => {
+	return appHostingHelper.get(options.projectPath, options).then(hostingConfig => {
 		return gcp.app.deploy(bucket.projectId, service.name, service.version, bucket.name, zip.name, zip.filesCount, token, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
 			if (!data.operationId) {
 				const msg = 'Unexpected response. Could not determine the operationId used to check the deployment status.'

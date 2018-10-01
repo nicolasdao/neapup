@@ -97,10 +97,18 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 		.then(files => {
 			const extraFiles = (options.files || []).filter(x => x && x.name && x.content)
 			const extraFullPathFiles = extraFiles.map(x => ({ name: join(dst, x.name), content: x.content }))
-			const blackList = [...extraFiles, ...FILES_BLACK_LIST]
-			const all_files = files.filter(f => !blackList.some(file => basename(f) == file))
+			const blackList = [...extraFiles.map(x => join(src, x.name)), ...FILES_BLACK_LIST.map(x => join(src, x))]
+			// remove files from the black list as well, the extra files, and the app.env.json
+			const all_files = files.filter(f => {
+				const relPath = f.replace(src, '').replace(/^(\\|\/)/, '')
+				const notAppEnvJson = !relPath.match(/^app\.([a-zA-Z0-9\-_]*?)\.json$/)
+				const notInBlackList = !blackList.some(file => f == file)
+				return notAppEnvJson && notInBlackList
+			})
 
-			const filesCount = all_files.length + extraFiles.length
+			console.log(extraFullPathFiles)
+
+			const filesCount = all_files.length + extraFullPathFiles.map(x => x.name).length
 
 			// 2. Making sure all the required files are defined
 			const missingFiles = FILES_REQUIRED_LIST.filter(file => !all_files.some(f => basename(f) == file))
@@ -187,6 +195,10 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 						} else 
 							return { filesCount, dst }
 
+					})
+					.then(() => {
+						console.log(dst)
+						throw new Error('dede')
 					})
 			})
 		})
