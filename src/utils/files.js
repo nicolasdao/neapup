@@ -196,10 +196,6 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 							return { filesCount, dst }
 
 					})
-					.then(() => {
-						console.log(dst)
-						throw new Error('dede')
-					})
 			})
 		})
 })

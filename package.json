@@ -29,7 +29,7 @@
     "insta": "git pull origin master && npm install ./ -g",
     "lint": "eslint index.js src/ test/ --fix",
     "push": "git push --follow-tags origin master",
-    "release": "standard-version",
+    "rls": "standard-version --release-as",
     "start": "node index.js",
     "test": "mocha"
   },

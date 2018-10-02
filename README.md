@@ -1,5 +1,22 @@
 
 # About Google Cloud App Engine
+## Setting Up Custom Domain
+### Overview
+
+When you set up a custom domain, you set it up for the entie project. All services
+
+### Steps
+
+1. Browse to your App Engine project, and go to __settings__.
+2. Click Custom Domain and follow the instructions.
+
+_WARNING:_ You will add a TXT record to your DNS to verify your domain ownership. Once setup, this may take a while (up to an hour) before it appears to Google.
+
+The automation steps are as follow:
+
+1. Verify your domain (that's kind of outside of the Google Cloud API hands as you need to set that up on your DNS. Maybe the verify action).
+2. Map the domain to your project. 
+
 ## Standard vs. Flexible Environments
 
 - [The App Engine Standard Environment](https://cloud.google.com/appengine/docs/standard/)
