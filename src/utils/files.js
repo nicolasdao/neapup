@@ -105,9 +105,7 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 				const notInBlackList = !blackList.some(file => f == file)
 				return notAppEnvJson && notInBlackList
 			})
-
-			console.log(extraFullPathFiles)
-
+			
 			const filesCount = all_files.length + extraFullPathFiles.map(x => x.name).length
 
 			// 2. Making sure all the required files are defined
