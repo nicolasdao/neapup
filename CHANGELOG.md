@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.6"></a>
+## [0.22.6](https://gitlab.com/neap/neap-manager/compare/v0.22.5...v0.22.6) (2018-10-02)
+
+
+
 <a name="0.22.5"></a>
 ## [0.22.5](https://gitlab.com/neap/neap-manager/compare/v0.22.4...v0.22.5) (2018-09-29)
 
