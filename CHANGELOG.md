@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.8"></a>
+## [0.22.8](https://gitlab.com/neap/neap-manager/compare/v0.22.7...v0.22.8) (2018-10-03)
+
+
+### Features
+
+* Add a new 'dn' command to manage custom domains ([c4a75d3](https://gitlab.com/neap/neap-manager/commit/c4a75d3))
+* Add a new 'dn' command to manage custom domains ([ae07e4a](https://gitlab.com/neap/neap-manager/commit/ae07e4a))
+
+
+
 <a name="0.22.7"></a>
 ## [0.22.7](https://gitlab.com/neap/neap-manager/compare/v0.22.6...v0.22.7) (2018-10-02)
 
