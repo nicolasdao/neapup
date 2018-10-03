@@ -9,12 +9,12 @@
 const path = require('path')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, gray, wait, error, promptList, warn, info, link } = require('../../../utils/console')
+const { bold, gray, wait, error, promptList, warn, info, link, displayTable } = require('../../../utils/console')
 const { collection, obj: { merge }, file } = require('../../../utils')
 const projectHelper = require('../project')
 const { hosting: hostingHelper } = require('../config')
 
-const listProjectsOrServices = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
+const listStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
 		let waitDone = wait('Gathering information about your Google Cloud Account')
 		return gcp.project.list(token, options)
@@ -23,9 +23,10 @@ const listProjectsOrServices = (options={}) => utils.project.confirm(merge(optio
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. List your Google Account App Engine\'s Services', value: 'services' },
-					{ name: ' 2. List your Google Account Projects', value: 'projects' },
-					{ name: ' 3. Login to another Google Account', value: 'account' }
+					{ name: ' 1. List Services', value: 'services' },
+					{ name: ' 2. List Projects', value: 'projects' },
+					{ name: ' 3. List Custom Domains', value: 'domains' },
+					{ name: '[Login to another Google Account]', value: 'account' }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
@@ -35,10 +36,14 @@ const listProjectsOrServices = (options={}) => utils.project.confirm(merge(optio
 						process.exit()
 					if (answer == 'services') 
 						return _getAppJsonFiles(options)
-							.then(appJsonFiles => _getProjectId(appJsonFiles, activeProjectIds, token, options))
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, options))
 							.then(({ projectId, token }) => _listProjectServices(projectId, token, options))
 					else if (answer == 'account')
-						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => listProjectsOrServices(options))
+						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => listStuffs(options))
+					else if (answer == 'domains') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, options))
+							.then(({ projectId, token }) => listProjectDomains(projectId, token, options))
 					else
 						return _listProjectDetails(activeProjectIds, token, options)
 				})
@@ -48,7 +53,7 @@ const listProjectsOrServices = (options={}) => utils.project.confirm(merge(optio
 				throw e
 			})
 	})
-	.then(() => listProjectsOrServices(merge(options, { question: 'What else do you want to do?' })))
+	.then(() => listStuffs(merge(options, { question: 'What else do you want to do?' })))
 
 const _addLeakinStatus = v => {
 	if (!v)
@@ -84,7 +89,7 @@ const _listProjectDetails = (projectIds, token, options={}) => Promise.resolve(n
 				// 1. Show projects
 				console.log(`${bold(idx+1)}. ${bold(projectId)} (${statsMgs})`)
 
-				const services = _createTable((data || []).map(service => {
+				const services = displayTable((data || []).map(service => {
 					const name = service.id 
 					const versions = (service.versions || []).map(v => _addLeakinStatus(v))
 					const versionsCount = versions.length
@@ -101,9 +106,8 @@ const _listProjectDetails = (projectIds, token, options={}) => Promise.resolve(n
 						'harmless vers.': harmlessInactiveVersionsCount,
 						'how to start/stop service?': lifeVersionsCount > 0 ? `neap stop ${name} -p ${projectId}` : `neap start ${name} -p ${projectId}`
 					}
-				}))
+				}), { indent: '   ' })
 
-				services.forEach(row => console.log(`     ${row}`))
 				console.log(gray(`     For more info, go to ${link(`https://console.cloud.google.com/appengine?project=${projectId}`)}`))
 				if (services.length > 0)
 					console.log('\n')
@@ -111,30 +115,6 @@ const _listProjectDetails = (projectIds, token, options={}) => Promise.resolve(n
 			_showLegend()
 		})
 })
-
-const _createTable = rows => {
-	if (!rows || !rows.length)
-		return []
-
-	const opts = { paddingLeft: 1, paddingRight: 1 }
-	const headerOpts = { paddingLeft: 1, paddingRight: 1, format: gray }
-	const columns = Object.keys(rows[0]).map(colName => {
-		const colWidth = _getMaxColWidth([colName, ...rows.map(v => v[colName])], opts)
-		const header = _adjustContentToWidth(colName, colWidth, headerOpts)
-		const nonFormattedhHeader = _adjustContentToWidth(colName, colWidth, Object.assign({}, headerOpts, { format: null }))
-		const colItems = rows.map(v => _adjustContentToWidth(v[colName], colWidth, opts))
-		return { header, nonFormattedhHeader, items: colItems }
-	})
-
-	const head = `|${columns.map(x => x.header).join('|')}|`
-	const nonFormattedHead = `|${columns.map(x => x.nonFormattedhHeader).join('|')}|`
-	const line = collection.seed(nonFormattedHead.length).map(() => '=').join('')
-	return [
-		head,
-		line,
-		...rows.map((row, idx) => `|${columns.map(col => (col.items || [])[idx]).join('|')}|`)
-	]
-}
 
 const _adjustContentToWidth = (content, maxWidth, options={}) => {
 	content = `${content}` || ''
@@ -160,7 +140,7 @@ const _getHostingFromFileName = (fileName, projectPath) => Promise.resolve(null)
 	return hostingHelper.get(projectPath, { env })
 })
 
-const _getProjectId = (appJsonFiles=[], allowedProjectIds=[], token, options={}) => {
+const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, options={}) => {
 	const getProj = (appJsonFiles && appJsonFiles.length > 0) 
 		? Promise.all(appJsonFiles.map(f => _getHostingFromFileName(f, options.projectPath)))
 			.then(values => {
@@ -193,7 +173,7 @@ const _getProjectId = (appJsonFiles=[], allowedProjectIds=[], token, options={})
 
 					return promptList({ message: 'Next:', choices: formattedChoices, separator: false }).then(answer => {
 						if (!answer)
-							return listProjectsOrServices(options)
+							return listStuffs(options)
 						else if (answer == '[other]')
 							return { projectId: null, token }
 						else if (answer == 'account')
@@ -210,18 +190,20 @@ const _getProjectId = (appJsonFiles=[], allowedProjectIds=[], token, options={})
 			return { projectId, token }
 		else {
 			const choices = [
-				...allowedProjectIds.map(value => ({ name: `List Services for project ${bold(value)}`, value })),
-				{ name: 'Login to another Google Account', value: 'account' }
+				...allowedProjectIds.map(value => ({ name: `${bold(value)}`, value })),
+				{ name: `${'[Login to another Google Account]'}`, value: 'account' }
 			]
 
-			const formattedChoices = choices.map((x, idx) => ({
-				name: ` ${idx+1}. ${x.name}`,
-				value: x.value
-			}))
+			const formattedChoices = choices.map((x, idx) => {
+				if (x.value == 'account')
+					return x
+				else
+					return { name: ` ${idx+1}. ${x.name}`, value: x.value }
+			})
 
-			return promptList({ message: 'Choose one of the following options:', choices: formattedChoices, separator: false }).then(answer => {
+			return promptList({ message: 'Choose a project, Login to another account or Abort:', choices: formattedChoices, separator: false }).then(answer => {
 				if (!answer)
-					return listProjectsOrServices(options)
+					return listStuffs(options)
 				else if (answer == 'account')
 					return utils.account.choose(merge(options))
 				else
@@ -232,7 +214,9 @@ const _getProjectId = (appJsonFiles=[], allowedProjectIds=[], token, options={})
 }
 
 const _listProjectServices = (projectId, token, options) => {
-	console.log(`Services for project ${bold(projectId)}`)
+	const title = `Services for project ${projectId}`
+	console.log(`\nServices for project ${bold(projectId)}`)
+	console.log(collection.seed(title.length).map(() => '=').join(''))
 	const loadingDone = wait(`Loading services for project ${bold(projectId)}...`)
 	return gcp.app.service.list(projectId, token, { debug: options.debug, verbose: false, includeVersions: true })
 		.catch(() => ({ data: []}))
@@ -301,6 +285,109 @@ const _listProjectServices = (projectId, token, options) => {
 		})
 }
 
+const _getSubDomains = (domain, subDomains) => {
+	subDomains = subDomains || []
+	if (!domain || !domain.id || subDomains.length == 0)
+		return []
+	else
+		return subDomains.filter(d => d && d.id && d.id != domain.id && d.id.indexOf(domain.id) >= 0)
+}
+
+const _getDomains = (subDomain, domains) => {
+	domains = domains || []
+	if (!subDomain || !subDomain.id || domains.length == 0)
+		return null
+	else
+		return domains.filter(d => d && d.id && d.id != subDomain.id).find(d => subDomain.id.indexOf(d.id) >= 0)
+}
+
+const _getDomainAndSubdomain = fqdm => {
+	const parts = (fqdm || '').split('.')
+	return {
+		domain: parts.slice(-2).join('.'),
+		subDomain: parts.slice(0,-2).join('.')
+	}
+}
+
+const _formatGoogleDomainRes = domains => (domains || []).reduce((acc, domain) => {
+	const subDomains = _getSubDomains(domain, domains)
+	const { domain: dm, subDomain: sbdm } = _getDomainAndSubdomain(domain.id)
+	const autoSSLon = domain.sslSettings && domain.sslSettings.sslManagementType == 'AUTOMATIC' && domain.sslSettings.certificateId
+	const certId = (domain.sslSettings || {}).certificateId
+	const resources = (domain.resourceRecords || []).map(r => {
+		r.name = sbdm
+		r.autoSSLon = autoSSLon
+		r.certId = certId
+		return r
+	})
+	if (subDomains.length > 0) {
+		const records = [
+			...resources, 
+			...subDomains.reduce((a,d) => {
+				const subAutoSSLon = d.sslSettings && d.sslSettings.sslManagementType == 'AUTOMATIC' && d.sslSettings.certificateId
+				const subCertId = (d.sslSettings || {}).certificateId
+				const { subDomain: _sbdm } = _getDomainAndSubdomain(d.id)
+				a.push(...(d.resourceRecords || []).map(r => {
+					r.name = _sbdm
+					r.autoSSLon = subAutoSSLon
+					r.certId = subCertId
+					return r
+				}))
+				return a
+			}, [])]
+
+		acc[dm] = records
+	} 
+	else if (!_getDomains(domain, domains)) // this domain has no subdomain and is not the subdomain of another domain
+		acc[dm] = resources
+	
+	return acc
+}, {})
+
+/**
+ * [description]
+ * @param  {[type]} projectId [description]
+ * @param  {[type]} token     [description]
+ * @param  {[type]} options   [description]
+ * @return {[type]}           [description]
+ */
+const listProjectDomains = (projectId, token, options={}) => {
+	const rawtTitle = `Custom Domains for project ${projectId}`
+	if (!options.displayOff) {
+		console.log(`\nCustom Domains for project ${bold(projectId)}`)
+		console.log(collection.seed(rawtTitle.length).map(() => '=').join(''))
+		console.log(' ')
+	}
+	const loadingDone = options.displayOff ? (() => null) : wait(`Loading custom domains for project ${bold(projectId)}...`)
+	return gcp.app.domain.list(projectId, token, { debug: options.debug, verbose: false })
+		.catch(() => ({ data: []}))
+		.then(({ data }) => {
+			loadingDone()
+			// 1. Display the results
+			const domains = _formatGoogleDomainRes(data)
+			if (!options.displayOff) {
+				if (data.length == 0)
+					console.log('   No custom domains found\n')
+				else
+					Object.keys(domains).forEach((domainName, idx) => {
+						console.log(`${bold(idx+1)}. ${bold(domainName)} Records:\n`)
+						displayTable(domains[domainName].map(r => ({
+							'set up as': r.type == 'CNAME' ? 'subdomain' : 'domain',
+							'record type': r.type,
+							name: r.name,
+							value: r.rrdata
+						})), { indent: '   ' })
+						console.log(' ')
+					})
+			}
+			return domains
+		}).catch(e => {
+			loadingDone()
+			console.log(error('Failed to list domains', e.message, e.stack))
+			throw e
+		})
+}
+
 const _showLegend = () => {
 	console.log(gray(`\n${bold('LEGEND')}`))
 	console.log(gray('======'))
@@ -320,7 +407,14 @@ const _showLegend = () => {
 	console.log(gray('               - Basic or manual scaling versions\n'))
 }
 
-module.exports = listProjectsOrServices
+module.exports = {
+	list: listStuffs,
+	listDomains: listProjectDomains,
+	chooseAProject,
+	_: {
+		formatGoogleDomainRes: _formatGoogleDomainRes
+	}
+}
 
 
 

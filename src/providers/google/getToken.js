@@ -22,7 +22,8 @@ const CLIENT_ID = '197157573268-pj0kkr7ekfj0fmoq3ji57aej50oui4ns.apps.googleuser
 const CLIENT_SECRET = 'Lb0ynC3U1JDxTS_ds4TzKrDF' //'2Uz-BIRBYlCaFTL4qvkTzJmo'
 const SCOPES = [
 	'https://www.googleapis.com/auth/cloud-platform',
-	'https://www.googleapis.com/auth/appengine.admin'
+	'https://www.googleapis.com/auth/appengine.admin',
+	'https://www.googleapis.com/auth/siteverification'
 ]
 const PORTS = [8085, 8086, 8087, 8088, 8089, 8090, 8091]
 const CONSENT_TIMEOUT = 5 * 60 * 1000 // wait for 5 min until the user has consented

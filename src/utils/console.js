@@ -12,6 +12,7 @@ const inquirer = require('inquirer')
 const stripAnsi = require('strip-ansi')
 const ansiEscapes = require('ansi-escapes')
 const { exec } = require('child_process')
+const { collection } = require('./core')
 
 const eraseLines = n => ansiEscapes.eraseLines(n)
 
@@ -181,7 +182,51 @@ const wait = (msg, timeOut = 300, ora = ora2) => {
 	return cancel
 }
 
-module.exports = wait
+const _adjustContentToWidth = (content, maxWidth, options={}) => {
+	content = `${content}` || ''
+	const { paddingLeft=0, paddingRight=0, format } = options
+	const padLeft = collection.seed(paddingLeft).map(() => ' ').join('')
+	const padRight = collection.seed(paddingRight).map(() => ' ').join('')
+	const missingBlanksCount = maxWidth - (paddingLeft + content.length + paddingRight)
+	const missingBlanks = missingBlanksCount > 0 ? collection.seed(missingBlanksCount).map(() => ' ').join('') : ''
+	return padLeft + ((format && typeof(format) == 'function') ? format(content) : content) + missingBlanks + padRight
+}
+
+const _getMaxColWidth = (contents=[], options={}) => {
+	const { paddingLeft= 2, paddingRight= 4 } = options
+	return Math.max(...contents.map(content => `${content}`.length)) + paddingLeft + paddingRight
+}
+
+/**
+ * [description]
+ * @param  {[Object]} rows    			[description]
+ * @param  {String} options.indent 		default ''
+ * @param  {Boolean} options.hide 		default false
+ * @return {[type]}         			[description]
+ */
+const displayTable = (rows, options={}) => {
+	if (!rows || !rows.length)
+		return []
+
+	const opts = { paddingLeft: 1, paddingRight: 1 }
+	const headerOpts = { paddingLeft: 1, paddingRight: 1, format: gray }
+	const columns = Object.keys(rows[0]).map(colName => {
+		const colWidth = _getMaxColWidth([colName, ...rows.map(v => v[colName])], opts)
+		const header = _adjustContentToWidth(colName, colWidth, headerOpts)
+		const nonFormattedhHeader = _adjustContentToWidth(colName, colWidth, Object.assign({}, headerOpts, { format: null }))
+		const colItems = rows.map(v => _adjustContentToWidth(v[colName], colWidth, opts))
+		return { header, nonFormattedhHeader, items: colItems }
+	})
+
+	const head = `|${columns.map(x => x.header).join('|')}|`
+	const nonFormattedHead = `|${columns.map(x => x.nonFormattedhHeader).join('|')}|`
+	const line = collection.seed(nonFormattedHead.length).map(() => '=').join('')
+	const stringRows = [ head, line, ...rows.map((row, idx) => `|${columns.map(col => (col.items || [])[idx]).join('|')}|`)]
+	if (!options.hide)
+		stringRows.forEach(row => console.log(`${options.indent || ''}${row}`))
+
+	return stringRows 
+}
 
 module.exports = {
 	aborted,
@@ -201,5 +246,6 @@ module.exports = {
 	question,
 	success,
 	wait,
-	warn
+	warn,
+	displayTable
 }

@@ -3,19 +3,26 @@
 ## Setting Up Custom Domain
 ### Overview
 
-When you set up a custom domain, you set it up for the entie project. All services
+When you set up a custom domain, you set it up for the entire project. All services
+
+__*WARNINGS:*__
+
+- Verifying Your Ownership May Take a While: You will add a TXT record to your DNS to verify your domain ownership. Once setup, this may take a while (up to an hour) before it appears to Google.
+- If you're using Cloudflare, make sure you have disabled the CDN, otherwise, the traffic will go through Cloudflare, and the SSL provided by Google won't work. You can check that by pinging your URI and confirming that you see the Google IPs you've set up. If you don't see them, that means that your traffic goes a 3rd party.
 
 ### Steps
 
 1. Browse to your App Engine project, and go to __settings__.
 2. Click Custom Domain and follow the instructions.
 
-_WARNING:_ You will add a TXT record to your DNS to verify your domain ownership. Once setup, this may take a while (up to an hour) before it appears to Google.
-
 The automation steps are as follow:
 
 1. Verify your domain (that's kind of outside of the Google Cloud API hands as you need to set that up on your DNS. Maybe the verify action).
 2. Map the domain to your project. 
+
+### Advanced Routing
+
+[https://cloud.google.com/appengine/docs/standard/python/how-requests-are-routed#routing_via_url](https://cloud.google.com/appengine/docs/standard/python/how-requests-are-routed#routing_via_url)
 
 ## Standard vs. Flexible Environments
 

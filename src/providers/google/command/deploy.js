@@ -74,8 +74,8 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
 		// .then(({ token, projectId, locationId, service: svcName }) => {
-		// 	return gcp.app.service.version.get('housi-188704', 'web-api-test', 'v20180928-021122-42', token, options).then(({ data }) => {
-		// 		console.log(data)
+		// 	return gcp.app.domain.delete('housi-188704', 'test.api-test.v1.housi.co',token, { confirm: true }).then(({ data }) => {
+		// 		console.log(JSON.stringify(data, null, '  '))
 		// 		throw new Error('ddqdqwe')
 		// 	})
 		// })

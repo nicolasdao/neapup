@@ -6,7 +6,9 @@
  * LICENSE file in the root directory of this source tree.
 */
 
-// For more info about Google Cloud API, go to https://cloud.google.com/apis/docs/overview
+// For more info about Google Cloud API, go to: 
+// Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
+// Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
@@ -33,7 +35,7 @@ const APP_SERVICE_VERSION_URL = (projectId, service, version) => `${APP_SERVICE_
 const DEPLOY_APP_URL = (projectId, service='default') => APP_SERVICE_VERSION_URL(projectId, service)
 const OPS_STATUS_URL = (projectId, operationId) => `https://appengine.googleapis.com/v1/apps/${projectId}/operations/${operationId}`
 const MIGRATE_ALL_TRAFFIC = (projectId, service='default') => `https://appengine.googleapis.com/v1/apps/${projectId}/services/${service}/?updateMask=split`
-const DOMAINS_URL = (projectId) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings`
+const DOMAINS_URL = (projectId, domain) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings${domain ? `/${domain}` : ''}`
 // SERVICE MGMT
 const SERVICE_MGMT_URL = (serviceName, enable) => `https://servicemanagement.googleapis.com/v1/services/${serviceName ? `${serviceName}${enable || ''}`: ''}`
 const SERVICE_MGMT_OPS_URL = (opsId) => `https://servicemanagement.googleapis.com/v1/operations/${opsId}`
@@ -470,7 +472,7 @@ const uploadZipFileToBucket = (zip, bucket, token, options={ debug:false }) => P
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////
-/// 1. MAIN -  START
+/// 1. APP ENGINE APIS - MAIN -  START
 ///////////////////////////////////////////////////////////////////
 const getAppDetails = (projectId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, token })
@@ -686,14 +688,14 @@ const checkOperationStatus = (projectId, operationId, token, options={ debug:fal
 })
 
 ///////////////////////////////////////////////////////////////////
-/// 1. MAIN -  END
+/// 1. APP ENGINE APIS - MAIN -  END
 ///////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////
-/// 2. SERVICES -  START
+/// 2. APP ENGINE APIS - SERVICES -  START
 ///////////////////////////////////////////////////////////////////
 
-// 2.1. MAIN - START
+// 2.1. APP ENGINE APIS - SERVICES - MAIN - START
 const getService = (projectId, service, token, options={ debug:false }) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ service, projectId, token })
 	_showDebug(`Requesting service ${bold(service)} for Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
@@ -767,9 +769,9 @@ const listServices = (projectId, token, options={ debug:false, includeVersions:f
 			return { status, data: services }
 		})
 })
-// 2.2. MAIN - END
+// 2.1. APP ENGINE APIS - SERVICES - MAIN - END
 
-// 2.1. VERSIONS - START
+// 2.2. APP ENGINE APIS - SERVICES - VERSIONS - START
 const getServiceVersion = (projectId, service, version, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ service, projectId, version, token })
 	_showDebug(`Requesting version ${bold(version)} from service ${bold(service)} for Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
@@ -965,22 +967,86 @@ const migrateAllTraffic = (projectId, service, version, token, options={ debug:f
 		return res
 	})
 })
-// 2.1. VERSIONS - END
+// 2.2. APP ENGINE APIS - SERVICES - VERSIONS - END
 
 
 ///////////////////////////////////////////////////////////////////
-/// 2. SERVICES -  END
+/// 2. APP ENGINE APIS - SERVICES -  END
 ///////////////////////////////////////////////////////////////////
 
-const listDomains = (projectId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
+///////////////////////////////////////////////////////////////////
+/// 3. APP ENGINE APIS - DOMAINS -  START
+///////////////////////////////////////////////////////////////////
+
+const getDomain = (projectId, domain, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.get(DOMAINS_URL(projectId, domain), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
+		.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+})
+
+const listDomains = (projectId, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.get(DOMAINS_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
-	})
+	}, options)
+		.then(res => ({ status: res.status, data: (res.data || {}).domainMappings || [] }))
 })
+
+/**
+ * [description]
+ * @param  {[type]} projectId 				[description]
+ * @param  {[type]} domain    				[description]
+ * @param  {[type]} token     				[description]
+ * @param  {Boolean} options.confirm   		[description]
+ * @return {[type]}           				[description]
+ */
+const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.delete(DOMAINS_URL(projectId, domain), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null ,options)
+		.then(res => {
+			if (res.data && res.data.name)
+				res.data.operationId = res.data.name.split('/').slice(-1)[0]
+			return res
+		})
+		.then(res => {
+			if (options.confirm) {
+			// NOTE: The reason we chose a different workflow if the updated field is 'servingStatus' is because there is a bug 
+			// in the Google Operation API when we try to get the status of the operations for that field. It never returns a 'done'
+			// status, though we can see in the Google console the operation has succeeded. 
+				const action = _checkOperation(projectId, res.data.operationId, token, null, null, options)
+				
+				return action
+					.then(opRes => {
+						if (opRes && opRes.error) {
+							const msg = `Fail to determine the operation status for domain ${bold(domain)} in project ${bold(projectId)}`
+							console.log(error(msg))
+							throw new Error(msg)
+						}
+						res.data.operation = opRes.data
+						return { status: opRes.status, data: res.data }
+					})
+
+			} else
+				return res
+		})
+})
+
+///////////////////////////////////////////////////////////////////
+/// 3. APP ENGINE APIS - DOMAINS -  END
+///////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1150,7 +1216,9 @@ module.exports = {
 			}
 		},
 		domain: {
-			list: listDomains
+			'get': getDomain,
+			list: listDomains,
+			delete: deleteDomain
 		}
 	},
 	serviceAPI: {

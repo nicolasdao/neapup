@@ -7,16 +7,18 @@
 */
 
 const utils = require('../utils')
+const { list } = require('./list')
 
 module.exports = {
 	service: {
-		list: require('./list')
+		list 
 	},
 	deploy: require('./deploy'),
 	init: require('./init'),
 	configure: utils.configure,
 	clean: require('./clean'),
-	manage: require('./manage')
+	manage: require('./manage'),
+	domain: require('./domain')
 }
 
 
