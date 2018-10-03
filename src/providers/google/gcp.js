@@ -315,6 +315,24 @@ const createProject = (name, projectId, token, options={ debug:false }) => Promi
 	})
 })
 
+/**
+ * [description]
+ * @param  {[type]} projectId 				[description]
+ * @param  {[type]} domain    				[description]
+ * @param  {[type]} token     				[description]
+ * @param  {Boolean} options.confirm   		[description]
+ * @return {[type]}           				[description]
+ */
+const deleteProject = (projectId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId })
+	_showDebug(`Deleting project ${bold(projectId)} in Google Cloud Platform.`, options)
+
+	return fetch.delete(PROJECTS_URL(projectId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null ,options)
+})
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////
@@ -967,6 +985,46 @@ const migrateAllTraffic = (projectId, service, version, token, options={ debug:f
 		return res
 	})
 })
+
+/**
+ * [description]
+ * @param  {[type]} projectId 				[description]
+ * @param  {[type]} domain    				[description]
+ * @param  {[type]} token     				[description]
+ * @param  {Boolean} options.confirm   		[description]
+ * @return {[type]}           				[description]
+ */
+const deleteService = (projectId, service, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, service })
+	_showDebug(`Deleting service for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.delete(APP_SERVICE_URL(projectId, service), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null ,options)
+		.then(res => {
+			if (res.data && res.data.name)
+				res.data.operationId = res.data.name.split('/').slice(-1)[0]
+			return res
+		})
+		.then(res => {
+			if (options.confirm) {
+				return _checkOperation(projectId, res.data.operationId, token, null, null, options)
+					.then(opRes => {
+						if (opRes && opRes.error) {
+							const msg = `Fail to determine the operation status for service ${bold(service)} in project ${bold(projectId)}`
+							console.log(error(msg))
+							throw new Error(msg)
+						}
+						res.data.operation = opRes.data
+						return { status: opRes.status, data: res.data }
+					})
+
+			} else
+				return res
+		})
+})
+
 // 2.2. APP ENGINE APIS - SERVICES - VERSIONS - END
 
 
@@ -979,7 +1037,7 @@ const migrateAllTraffic = (projectId, service, version, token, options={ debug:f
 ///////////////////////////////////////////////////////////////////
 
 const getDomain = (projectId, domain, token, options={}) => Promise.resolve(null).then(() => {
-	_validateRequiredParams({ projectId, token })
+	_validateRequiredParams({ projectId, domain, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.get(DOMAINS_URL(projectId, domain), {
@@ -1009,7 +1067,7 @@ const listDomains = (projectId, token, options={}) => Promise.resolve(null).then
  * @return {[type]}           				[description]
  */
 const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(null).then(() => {
-	_validateRequiredParams({ projectId, token })
+	_validateRequiredParams({ projectId, domain, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.delete(DOMAINS_URL(projectId, domain), {
@@ -1023,12 +1081,7 @@ const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(n
 		})
 		.then(res => {
 			if (options.confirm) {
-			// NOTE: The reason we chose a different workflow if the updated field is 'servingStatus' is because there is a bug 
-			// in the Google Operation API when we try to get the status of the operations for that field. It never returns a 'done'
-			// status, though we can see in the Google console the operation has succeeded. 
-				const action = _checkOperation(projectId, res.data.operationId, token, null, null, options)
-				
-				return action
+				return _checkOperation(projectId, res.data.operationId, token, null, null, options)
 					.then(opRes => {
 						if (opRes && opRes.error) {
 							const msg = `Fail to determine the operation status for domain ${bold(domain)} in project ${bold(projectId)}`
@@ -1183,6 +1236,7 @@ module.exports = {
 		'get': getProject,
 		list: listProjects, 
 		create: createProject,
+		delete: deleteProject,
 		billing: {
 			'get': getProjectBillingInfo,
 			goToSetupPage: redirectToBillingPage,
@@ -1204,6 +1258,7 @@ module.exports = {
 		service: {
 			'get': getService,
 			list: listServices,
+			delete: deleteService,
 			version: {
 				'get': getServiceVersion,
 				list: listServiceVersions,

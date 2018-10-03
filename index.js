@@ -11,7 +11,7 @@
 'use strict'
 
 const program = require('commander')
-const { deploy, list, configure, clean, manage, domain } = require('./src')
+const { deploy, list, configure, clean, manage, domain, remove } = require('./src')
 const { bold, cyan } = require('./src/utils/console')
 
 program
@@ -59,13 +59,23 @@ program
 program
 	.command('dn [opt1]')
 	.alias('ls')
-	.usage('. This command lists all the App Engine services currently active in your Google Cloud Platform project.')
+	.usage('. This command helps manage custom domains in your Google Cloud Platform project.')
 	.option('-d, --debug', 'Show debugging messages.')
-	.option('-g, --global', 'Choose a project from your account first before listing the services.')
 	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')
 	.action((opt1, options) => {
 		const { projectPath } = _getParams(opt1)
-		return domain({ debug: options.debug, global: options.global, projectPath: projectPath, env: options.env }).then(() => process.exit())
+		return domain({ debug: options.debug, projectPath: projectPath, env: options.env }).then(() => process.exit())
+	})
+
+program
+	.command('remove [opt1]')
+	.alias('rm')
+	.usage('. This command removes all the App Engine services currently active in your Google Cloud Platform project.')
+	.option('-d, --debug', 'Show debugging messages.')
+	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')
+	.action((opt1, options) => {
+		const { projectPath } = _getParams(opt1)
+		return remove({ debug: options.debug, projectPath: projectPath, env: options.env }).then(() => process.exit())
 	})
 
 program

@@ -14,7 +14,7 @@ const { obj: { merge }, file } = require('../../../utils')
 const projectHelper = require('../project')
 const { listDomains, chooseAProject } = require('./list')
 
-const manageDomains = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
+const removeStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
 		let waitDone = wait('Gathering information about your Google Cloud Account')
 		return gcp.project.list(token, options)
@@ -23,24 +23,59 @@ const manageDomains = (options={}) => utils.project.confirm(merge(options, { sel
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. List Custom Domains', value: 'list' },
-					{ name: ' 2. Add a Custom Domain', value: 'add' },
-					{ name: ' 3. Delete a Custom Domain', value: 'delete' },
+					{ name: ' 1. Project', value: 'project' },
+					{ name: ' 2. Service', value: 'service' },
+					{ name: ' 3. Custom Domain', value: 'domain' },
 					{ name: '[Login to another Google Account]', value: 'account' }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
 
-				return promptList({ message: (options.question || 'Choose one of the following options:'), choices: topLevelChoices, separator: false }).then(answer => {
+				return promptList({ message: (options.question || 'What do you want to delete?'), choices: topLevelChoices, separator: false }).then(answer => {
 					if (!answer)
 						process.exit()
-					if (answer == 'list') 
+					if (answer == 'project') 
 						return _getAppJsonFiles(options)
-							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, manageDomains, options))
-							.then(({ projectId, token }) => listDomains(projectId, token, options))
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Deleting project ${bold(projectId)}`)
+								const startDel = Date.now()
+								return gcp.project.delete(projectId, token, merge(options, { confirm: true }))
+									.then(() => {
+										waitDone()
+										console.log(success(`Project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
+									})
+							})
+					else if (answer == 'service') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Listing services for project ${bold(projectId)}`)
+								return gcp.app.service.list(projectId, token, merge(options, { verbose: false }))
+									.then(({ data: services }) => {
+										waitDone()
+										if (!services || !services.length) {
+											console.log('\n   No services found\n')
+											return
+										}
+
+										const choices = services.map((svc, idx) => ({ name: ` ${bold(idx+1)}. ${bold(svc.id)}`, value: svc.id }))
+										return promptList({ message: 'Which service do you want to delete?', choices, separator: false }).then(service => {
+											if (service) {
+												waitDone = wait(`Deleting service ${bold(service)} in project ${bold(projectId)}`)
+												const startDel = Date.now()
+												return gcp.app.service.delete(projectId, service, token, merge(options, { confirm: true }))
+													.then(() => {
+														waitDone()
+														console.log(success(`Service ${bold(service)} in project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
+													})
+											}
+										})
+									})
+							})
 					else if (answer == 'delete') 
 						return _getAppJsonFiles(options)
-							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, manageDomains, options))
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
 								waitDone = wait(`Listing all domains for project ${bold(projectId)}`)
 								return listDomains(projectId, token, merge(options, { displayOff: true }))
@@ -95,7 +130,7 @@ const manageDomains = (options={}) => utils.project.confirm(merge(options, { sel
 								})
 							})
 					else if (answer == 'account')
-						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => manageDomains(options))
+						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => removeStuffs(options))
 					else
 						throw new Error('Ops not supported yet')
 				})
@@ -105,14 +140,14 @@ const manageDomains = (options={}) => utils.project.confirm(merge(options, { sel
 				throw e
 			})
 	})
-	.then(() => manageDomains(merge(options, { question: 'What else do you want to do?' })))
+	.then(() => removeStuffs(merge(options, { question: 'What else do you want to do?' })))
 
 const _getAppJsonFiles = (options={}) => file.getJsonFiles(options.projectPath, options)
 	.catch(() => [])
 	.then(jsonFiles => jsonFiles.map(x => path.basename(x)).filter(x => x.match(/^app\./) && (x.split('.').length == 3 || x.split('.').length == 2)))
 
 
-module.exports = manageDomains
+module.exports = removeStuffs
 
 
 

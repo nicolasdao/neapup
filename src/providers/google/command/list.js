@@ -36,13 +36,13 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 						process.exit()
 					if (answer == 'services') 
 						return _getAppJsonFiles(options)
-							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, options))
-							.then(({ projectId, token }) => _listProjectServices(projectId, token, options))
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => listProjectServices(projectId, token, options))
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => listStuffs(options))
 					else if (answer == 'domains') 
 						return _getAppJsonFiles(options)
-							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, options))
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => listProjectDomains(projectId, token, options))
 					else
 						return _listProjectDetails(activeProjectIds, token, options)
@@ -140,7 +140,7 @@ const _getHostingFromFileName = (fileName, projectPath) => Promise.resolve(null)
 	return hostingHelper.get(projectPath, { env })
 })
 
-const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, options={}) => {
+const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, comeBackToMenu, options={}) => {
 	const getProj = (appJsonFiles && appJsonFiles.length > 0) 
 		? Promise.all(appJsonFiles.map(f => _getHostingFromFileName(f, options.projectPath)))
 			.then(values => {
@@ -173,7 +173,7 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, options={}
 
 					return promptList({ message: 'Next:', choices: formattedChoices, separator: false }).then(answer => {
 						if (!answer)
-							return listStuffs(options)
+							return comeBackToMenu(options)
 						else if (answer == '[other]')
 							return { projectId: null, token }
 						else if (answer == 'account')
@@ -203,7 +203,7 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, options={}
 
 			return promptList({ message: 'Choose a project, Login to another account or Abort:', choices: formattedChoices, separator: false }).then(answer => {
 				if (!answer)
-					return listStuffs(options)
+					return comeBackToMenu(options)
 				else if (answer == 'account')
 					return utils.account.choose(merge(options))
 				else
@@ -213,9 +213,10 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, options={}
 	})
 }
 
-const _listProjectServices = (projectId, token, options) => {
+const listProjectServices = (projectId, token, options) => {
 	const title = `Services for project ${projectId}`
-	console.log(`\nServices for project ${bold(projectId)}`)
+	if (!options.displayOff)
+		console.log(`\nServices for project ${bold(projectId)}`)
 	console.log(collection.seed(title.length).map(() => '=').join(''))
 	const loadingDone = wait(`Loading services for project ${bold(projectId)}...`)
 	return gcp.app.service.list(projectId, token, { debug: options.debug, verbose: false, includeVersions: true })
@@ -410,6 +411,7 @@ const _showLegend = () => {
 module.exports = {
 	list: listStuffs,
 	listDomains: listProjectDomains,
+	listServices: listProjectServices,
 	chooseAProject,
 	_: {
 		formatGoogleDomainRes: _formatGoogleDomainRes

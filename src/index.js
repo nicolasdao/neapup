@@ -13,7 +13,8 @@ const {
 	configure: gcpConfigure,
 	clean: gcpClean,
 	manage,
-	domain
+	domain,
+	remove
 } = require('./providers/google/command')
 
 const deploy = (provider='google', options={}) => Promise.resolve(null).then(() => {
@@ -48,5 +49,6 @@ module.exports = {
 	configure,
 	clean,
 	manage,
-	domain
+	domain,
+	remove
 }

@@ -18,7 +18,8 @@ module.exports = {
 	configure: utils.configure,
 	clean: require('./clean'),
 	manage: require('./manage'),
-	domain: require('./domain')
+	domain: require('./domain'),
+	remove: require('./remove')
 }
 
 
