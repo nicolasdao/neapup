@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.9"></a>
+## [0.22.9](https://gitlab.com/neap/neap-manager/compare/v0.22.8...v0.22.9) (2018-10-03)
+
+
+### Features
+
+* Add new 'rm' command to delete projects, services and custom domains ([20fda96](https://gitlab.com/neap/neap-manager/commit/20fda96))
+
+
+
 <a name="0.22.8"></a>
 ## [0.22.8](https://gitlab.com/neap/neap-manager/compare/v0.22.7...v0.22.8) (2018-10-03)
 
