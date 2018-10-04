@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.11"></a>
+## [0.22.11](https://gitlab.com/neap/neap-manager/compare/v0.22.10...v0.22.11) (2018-10-04)
+
+
+### Features
+
+* Include the app.yaml even for standard env ([9e0a588](https://gitlab.com/neap/neap-manager/commit/9e0a588))
+
+
+
 <a name="0.22.10"></a>
 ## [0.22.10](https://gitlab.com/neap/neap-manager/compare/v0.22.9...v0.22.10) (2018-10-04)
 
