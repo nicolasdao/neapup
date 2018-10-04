@@ -7,8 +7,8 @@
 */
 
 // For more info about Google Cloud API, go to: 
-// Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
-// Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
+// 	- Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
+// 	- Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')

@@ -58,7 +58,6 @@ program
 
 program
 	.command('dn [opt1]')
-	.alias('ls')
 	.usage('. This command helps manage custom domains in your Google Cloud Platform project.')
 	.option('-d, --debug', 'Show debugging messages.')
 	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')

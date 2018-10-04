@@ -205,8 +205,13 @@ __*References*__
 - [Advanced configuration of your App with app.yaml](https://cloud.google.com/appengine/docs/flexible/nodejs/reference/app-yaml)
 - [All the properties of an app.json](https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.services.versions)
 
+### How to add wildcard subdomain to access services?
+
+After adding your custom domain (set of A and AAAA records) in GCP, add a new wildcard subdomain. For more details, go to [On Google App Engine subdomain routing](https://medium.com/@david.michael/on-google-app-engine-subdomain-routing-aef8a81fff94).
+
 ### The deployment property
 - [Deployment](https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.services.versions#Deployment)
+
 
 # License
 Copyright (c) 2018, Neap Pty Ltd.

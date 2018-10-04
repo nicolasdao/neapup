@@ -153,13 +153,19 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, comeBackTo
 					return { projectId: null, token }
 				else {
 					const authorizedProjects = projectIds.filter(id => allowedProjectIds.some(pId => pId == id))
+					const nonAuthorizedProjects = projectIds.filter(id => !allowedProjectIds.some(pId => pId == id))
 					const fName = appJsonFiles.length == 1 ? `in your ${bold(appJsonFiles[0])}` : `across multiple ${bold('app.<env>.json')}`
 					const msg = projectIds.length == 1
 						? `We've found a single Google Cloud Project defined ${fName}`
 						: `We've found different Google Cloud Projects defined ${fName}`
 					console.log(info(msg))
-					if (authorizedProjects.length != projectIds.length)
+					if (nonAuthorizedProjects.length > 0) {
 						console.log(warn('You\'re currently logged in to a Google Account which does not have access to all the projects defined in the app.<env>.json files'))
+						console.log(info(`Your current Google Account contains ${bold(allowedProjectIds.length)} active projects. The following projects are not listed amongst them:`))
+						nonAuthorizedProjects.forEach(id => {
+							console.log(`    - ${bold(id)}`)
+						})
+					}
 					const authChoices = [
 						...authorizedProjects.map(value => ({ name: `List Services for project ${bold(value)}`, value })),
 						{ name: 'List Services from another project', value: '[other]' },
