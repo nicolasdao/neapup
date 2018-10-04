@@ -102,12 +102,12 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
 					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
-					const extraFiles = deployingToFlex
-						? { files: [{ name: 'app.yaml', content: appHostingHelper.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) }] } 
-						: { files: []}
-
-					extraFiles.files.push({ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') })
-
+					const extraFiles = { 
+						files: [
+							{ name: 'app.yaml', content: appHostingHelper.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) },
+							{ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') }
+						]
+					} 
 					// 3.2. Check quotas for Standard env.
 					const checkQuotas = deployingToFlex || (hostConfig.ignore && hostConfig.ignore['quotas-warning'])
 						? Promise.resolve(null)
