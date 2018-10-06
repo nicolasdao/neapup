@@ -11,7 +11,7 @@
 
 const { assert } = require('chai')
 const { join } = require('path')
-const { obj, file } = require('../src/utils')
+const { obj, file, yaml } = require('../src/utils')
 
 describe('utils', () => {
 	describe('obj', () => {
@@ -96,6 +96,37 @@ describe('utils', () => {
 				]
 				const rootDir = file.getRootDir(files)
 				assert.equal(rootDir, join('Users', 'batman', 'documents', 'project', 'webfunc'), '01')
+			})
+		})
+	})
+
+	describe('yaml', () => {
+		describe('#objToYaml', () => {
+			it('01 - Should convert JSON to YAML.', () => {
+				const yaml_01 = yaml.objToYaml({
+					cron: [{
+						description: 'Hello world',
+						url: '/',
+						schedule: 'every 1 mins'
+					}, {
+						description: 'Hello Madam',
+						url: '/home/*',
+						schedule: 'every 10 hours'
+					}]
+				})
+
+				const result_01 = `
+				cron:
+					-
+					    description: 'Hello world'
+					    url: /
+					    schedule: 'every 1 mins'
+					-
+					    description: 'Hello Madam'
+					    url: '/home/*'
+					    schedule: 'every 10 hours'`
+
+				assert.equal(yaml_01.replace(/(\n|\s)/g, ''), result_01.replace(/(\n|\s)/g, ''), '01')
 			})
 		})
 	})

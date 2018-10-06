@@ -112,8 +112,8 @@ const clean = (options={}) => utils.project.confirm(merge(options, { selectProje
 								_showLegend()
 
 								return promptList({ message: 'Next:', choices:[
-									{ name: ' 1. Fix leaking versions', value: 'fix' },
-									{ name: ' 2. Change account', value: 'change' }], separator: false })
+									{ name: ' Fix leaking versions', value: 'fix' },
+									{ name: 'Login to another Google Account', value: 'change', specialOps: true }], separator: false })
 									.then(answer => {
 										if (!answer)
 											process.exit()

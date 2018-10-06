@@ -480,11 +480,12 @@ const chooseService = (projectId, options={}) => getToken(options).then(token =>
 				const n = isCurrent ? `${bold('[ Current ]')} ${d.id}` : `${d.id}`
 				return { name: n, value: `${d.id}`, idx: isCurrent ? 0 : 1 }
 			}), x => x.idx, 'asc'),
-			{ name: `${bold('[ Create new service ]')}`, value: 'create new' }]
+			{ name: 'Create new service', value: 'create new', specialOps: true }]
 
 		const formattedChoices = choices.map((x, idx) => ({
 			name: x.value == 'create new' ? x.name : ` ${idx+1}. ${x.name}`,
-			value: x.value
+			value: x.value,
+			specialOps: x.specialOps
 		}))
 
 		return promptList({ message: options.optionsMessage || 'Choose one of the following options:', choices: formattedChoices, separator: false}).then(answer => {
@@ -575,11 +576,12 @@ const _updateRoot = (answers={}, options={}) => Promise.resolve(null).then(() =>
 
 	choices.push(...[
 		{ name: 'Show current config', value: 'show' },
-		{ name: `${bold('[ Save ]')}`, value: 'save' }])
+		{ name: 'Save', value: 'save', specialOps: true }])
 
 	const formattedChoices = choices.map((x, idx) => ({
 		name: x.value == 'save' ? x.name : ` ${idx+1}. ${x.name}`,
-		value: x.value
+		value: x.value,
+		specialOps: x.specialOps
 	}))
 
 	const fileName = options.env ? `app.${options.env}.json` : 'app.json'
@@ -723,8 +725,8 @@ const _configureHandlers = (answers={}, options={}) => file.getFiles(options.pro
 		} else {
 			const choices = [
 				...handlers.map((h, idx) => ({ name: ` ${idx+1}. ${bold(h.urlRegex)} --> ${bold((h.script || {}).scriptPath)}` , value: idx })), 
-				{ name: `${bold('[ Create ]')}`, value: 'create' },
-				{ name: `${bold('[ Save ]')}`, value: 'save' }]
+				{ name: 'Create', value: 'create', specialOps: true },
+				{ name: 'Save', value: 'save', specialOps: true }]
 
 			return promptList({ message: 'Edit a handler:', choices, separator: false }).then(answer => {
 				if (!answer && answer != 0) {
@@ -1052,11 +1054,12 @@ const _configureAutoScaling = (answers={}, message, backup, options={}) => Promi
 
 	const choices = [
 		...AUTOSCALING_OPTIONS.filter(x => x.env == 'both' || env.indexOf(x.env) >= 0 ), 
-		{ name: `${bold('[ Save ]')}`, value: 'save' }]
+		{ name: 'Save', value: 'save', specialOps: true }]
 
 	const formattedChoices = choices.map((x, idx) => ({
 		name: x.value == 'save' ? x.name : ` ${idx+1}. ${x.name}`,
-		value: x.value
+		value: x.value,
+		specialOps: x.specialOps
 	}))
 
 	return promptList({ message: message || 'What other auto-scaling options do you want to configure?', choices: formattedChoices, separator: false}).then(answer => {
@@ -1099,7 +1102,7 @@ const _configureBasicScaling = (answers={}, message, backup, options={}) => Prom
 	const choices = [
 		{ name: ' 1. Max. number of instances', value: '_configureBasicScalingMaxInstances' },
 		{ name: ' 2. Idle timeout', value: '_configureBasicScalingIdleTimeOut' },
-		{ name: `${bold('[ Save ]')}`, value: 'save' }
+		{ name: 'Save', value: 'save', specialOps: true }
 	]
 
 	return promptList({ message: message || 'What other basic-scaling options do you want to configure?', choices, separator: false}).then(answer => {

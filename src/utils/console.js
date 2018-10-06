@@ -9,6 +9,7 @@ const { bold, gray, cyan, red, underline, green } = require('chalk')
 const ora2 = require('ora')
 const readline = require('readline')
 const inquirer = require('inquirer')
+inquirer.registerPrompt('autocomplete', require('inquirer-autocomplete-prompt'))
 const stripAnsi = require('strip-ansi')
 const ansiEscapes = require('ansi-escapes')
 const { exec } = require('child_process')
@@ -90,11 +91,12 @@ const promptList = ({
 	pageSize = 15, // Show 15 lines without scrolling (~4 credit cards)
 	separator = true, // Puts a blank separator between each choice
 	abort = 'end', // Wether the `abort` option will be at the `start` or the `end`,
-	eraseFinalAnswer = false // If true, the line with the final answee that inquirer prints will be erased before returning
+	eraseFinalAnswer = false, // If true, the line with the final answer that inquirer prints will be erased before returning
+	noAbort = false
 }) => {
 	let biggestLength = 0
 
-	choices = choices.map(choice => {
+	const specialOps = choices.filter(choice => choice.name && choice.specialOps).map(choice => {
 		if (choice.name) {
 			const length = getLength(choice.name)
 			if (length > biggestLength) {
@@ -102,7 +104,16 @@ const promptList = ({
 			}
 			return choice
 		}
-		throw new Error('Invalid choice')
+	})
+
+	choices = choices.filter(choice => choice.name && !choice.specialOps).map(choice => {
+		if (choice.name) {
+			const length = getLength(choice.name)
+			if (length > biggestLength) {
+				biggestLength = length
+			}
+			return choice
+		}
 	})
 
 	if (separator === true) {
@@ -118,14 +129,16 @@ const promptList = ({
 		value: undefined
 	}
 
-	if (abort === 'start') {
-		const blankSep = choices.shift()
-		choices.unshift(abortSeparator)
-		choices.unshift(_abort)
-		choices.unshift(blankSep)
-	} else {
-		choices.push(abortSeparator)
-		choices.push(_abort)
+	if (!noAbort) {
+		if (abort === 'start') {
+			const blankSep = choices.shift()
+			choices.unshift(abortSeparator)
+			choices.unshift(...specialOps, _abort)
+			choices.unshift(blankSep)
+		} else {
+			choices.push(abortSeparator)
+			choices.push(...specialOps, _abort)
+		}
 	}
 
 	const nonce = Date.now()
@@ -140,6 +153,15 @@ const promptList = ({
 			process.stdout.write(eraseLines(2))
 		return answer[nonce]
 	})
+}
+
+const searchAnswer = (message, choices, filterFn) => {
+	return inquirer.prompt([{
+		type: 'autocomplete',
+		name: 'data',
+		message,
+		source: (answersSoFar, input) => Promise.resolve(null).then(() => filterFn(input, choices))
+	}])
 }
 
 const execCommand = command => new Promise((success, failure) => {
@@ -247,5 +269,6 @@ module.exports = {
 	success,
 	wait,
 	warn,
-	displayTable
+	displayTable,
+	searchAnswer
 }

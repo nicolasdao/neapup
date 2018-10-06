@@ -26,8 +26,10 @@ const c2sObject = obj => {
 	}, {})
 }
 
-const objToYaml = obj => YAML.stringify(c2sObject(obj) || {}, 2)
+const objToYaml = obj => YAML.stringify(c2sObject(obj) || {}, 6)
+const yamlToObj = str => YAML.parse(str)
 
 module.exports = {
-	objToYaml
+	objToYaml,
+	yamlToObj
 }

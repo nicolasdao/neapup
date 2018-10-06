@@ -11,7 +11,7 @@
 'use strict'
 
 const program = require('commander')
-const { deploy, list, configure, clean, manage, domain, remove } = require('./src')
+const { deploy, list, configure, clean, manage, domain, remove, add } = require('./src')
 const { bold, cyan } = require('./src/utils/console')
 
 program
@@ -75,6 +75,16 @@ program
 	.action((opt1, options) => {
 		const { projectPath } = _getParams(opt1)
 		return remove({ debug: options.debug, projectPath: projectPath, env: options.env }).then(() => process.exit())
+	})
+
+program
+	.command('add [opt1]')
+	.alias('a')
+	.usage('. This command adds items to your Google Cloud Platform project.')
+	.option('-d, --debug', 'Show debugging messages.')
+	.action((opt1, options) => {
+		const { projectPath } = _getParams(opt1)
+		return add({ debug: options.debug, projectPath: projectPath }).then(() => process.exit())
 	})
 
 program

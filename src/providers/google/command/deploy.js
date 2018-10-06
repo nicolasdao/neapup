@@ -74,7 +74,11 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
 		// .then(({ token, projectId, locationId, service: svcName }) => {
-		// 	return gcp.app.domain.delete('housi-188704', 'test.api-test.v1.housi.co',token, { confirm: true }).then(({ data }) => {
+		// 	const cronJobs = []
+		// 	//return gcp.app.cron.get('cron-test-izelv', token, { confirm: true })
+		// 	return gcp.app.cron.update('cron-test-izelv', cronJobs, token, { confirm: true })
+		// 	.then(() => gcp.app.cron.get('cron-test-izelv', token))
+		// 	.then(({ data }) => {
 		// 		console.log(JSON.stringify(data, null, '  '))
 		// 		throw new Error('ddqdqwe')
 		// 	})
@@ -176,7 +180,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 					const zipSize = (zip.file.length/1024/1024).toFixed(2)
 					const uploadStart = Date.now()
 					waitDone = wait(`Uploading nodejs app (${zipSize}MB) to bucket`)
-					return gcp.bucket.uploadZip(zip, bucket, token, options)
+					return gcp.bucket.uploadFile(bucket.projectId, bucket.name, { name: zip.name, content: zip.file }, token, options)
 						.then(() => {
 							waitDone()
 							console.log(success(`App (${zipSize}MB) successfully uploaded to bucket in ${((Date.now() - uploadStart)/1000).toFixed(2)} seconds.`))

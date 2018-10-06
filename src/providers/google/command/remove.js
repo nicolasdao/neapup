@@ -9,10 +9,11 @@
 const path = require('path')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, warn, link, askQuestion, question, success } = require('../../../utils/console')
-const { obj: { merge }, file } = require('../../../utils')
+const { bold, wait, error, promptList, askQuestion, question, success, info, displayTable } = require('../../../utils/console')
+const { obj: { merge }, file, collection } = require('../../../utils')
 const projectHelper = require('../project')
-const { listDomains, chooseAProject } = require('./list')
+const { chooseAProject } = require('./list')
+const getToken = require('../getToken')
 
 const removeStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
@@ -26,7 +27,8 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 					{ name: ' 1. Project', value: 'project' },
 					{ name: ' 2. Service', value: 'service' },
 					{ name: ' 3. Custom Domain', value: 'domain' },
-					{ name: '[Login to another Google Account]', value: 'account' }
+					{ name: ' 4. Cron Job', value: 'cron' },
+					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
@@ -73,66 +75,64 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 										})
 									})
 							})
-					else if (answer == 'delete') 
+					else if (answer == 'cron') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Listing all domains for project ${bold(projectId)}`)
-								return listDomains(projectId, token, merge(options, { displayOff: true }))
-									.then(domains => ({ domains, projectId }))
-							})
-							.then(({ domains, projectId }) => {
-								waitDone()
-								domains = domains || {}
-								const domainList = Object.keys(domains)
-								if (domainList.length == 0) {
-									console.log('\n   No custom domains found\n')
-									return
-								}
-								const domainNames = Object.keys(domains).reduce((acc, domain) => {
-									const records = domains[domain]
-									records.map(r => ({ name: `${r.name}.${domain}`, isDomain: r.type != 'CNAME', domain }))
-										.forEach(r => acc[r.name] = { isDomain: r.isDomain, records, domain: r.domain })
-									return acc
-								}, {})
-								const choices = Object.keys(domainNames).map((domainName, idx) => ({ name: ` ${idx+1}. ${domainName}`, value: domainName }))
-								return promptList({ message: 'Which domain/subdomain do you want to delete?', choices, separator: false }).then(answer => {
-									if (answer) {
-										const isNotSetupAsSubdomain = domainNames[answer].isDomain
-										const subDomains = (domainNames[answer].records || []).filter(r => r.type == 'CNAME')
-										const action = (isNotSetupAsSubdomain && subDomains.length > 0)
-											? Promise.resolve(null).then(() => {
-												console.log(warn(`Deleting ${link(bold(answer))} will also delete its subdomains`))
-												return askQuestion(question('Are you sure you want to proceed (Y/n) ? '))
-											})
-											: Promise.resolve(true)
+								waitDone = wait(`Getting services for project ${bold(projectId)}`)
+								return gcp.app.service.list(projectId, token, merge(options, { verbose: false }))
+									.then(({ data: services }) => {
+										waitDone()
+										if (services.length == 0) {
+											console.log(info(`No services found for project ${bold(projectId)}`))
+											console.log(info('You cannot add a Cron job if there are no services'))
+											console.log(info('Deploy at least one service and then come back here'))
+											return
+										} else {
+											waitDone = wait(`Getting Cron config for project ${bold(projectId)}`)
+											return gcp.app.cron.get(projectId, token, options)
+												.then(({ data: cronJobs }) => {
+													waitDone()
+													const title = `Cron Jobs For Project ${projectId}`
+													console.log(`\nCron Jobs For Project ${bold(projectId)}`)
+													console.log(collection.seed(title.length).map(() => '=').join(''))
+													console.log(' ')
 
-										return action.then(yes => {
-											if (yes != 'n') {
-												const fqSubDomains = subDomains.map(x => `${x.name}.${domainNames[answer].domain}`)
-												const domainsReadyForDeletion = [...fqSubDomains, answer]
-												let counter = domainsReadyForDeletion.length
-												let label = counter > 1 ? 'domains' : 'domain'
-												waitDone = wait(`Deleting ${counter} custom ${label} in project ${bold(projectId)}`)
-												return domainsReadyForDeletion.reduce((job, d) => job.then(() =>  
-													gcp.app.domain.delete(projectId, d, token, merge(options, { confirm: true })).then(() => {
-														waitDone()
-														console.log(success(`Custom domain ${link(bold(d))} successfully deleted`))
-														counter--
-														if (counter > 0) {
-															label = counter > 1 ? 'domains' : 'domain'
-															waitDone = wait(`Deleting ${counter} custom ${label} in project ${bold(projectId)}`)
-														}
-													})), Promise.resolve(null))
-											}
-										})
-									}
-								})
+													if (!cronJobs || cronJobs.length == 0) {
+														console.log('   No Cron jobs found\n')
+														return
+													}
+													else {
+														displayTable(cronJobs.map((c, idx) => ({
+															id: idx + 1,
+															schedule: c.schedule,
+															timezone: c.timezone,
+															url: c.url,
+															service: c.target,
+															description: c.description,
+															created: c.creationDate
+														})), { indent: '   ' })
+														console.log(' ')
+														return _chooseCronId(cronJobs.map((c,idx) => idx + 1))
+															.then(ids => {
+																const cronJobsLeft = cronJobs.filter((c,idx) => !ids.some(id => id == (idx+1)))
+																waitDone = wait(`Deleting ${ids.length} Cron job${ids.length == 1 ? '' : 's'}...`)
+																return getToken(options)
+																	.then(token => gcp.app.cron.update(projectId, cronJobsLeft, token, options))
+																	.then(() => {
+																		waitDone()
+																		console.log(success(`${ids.length} Cron job${ids.length == 1 ? '' : 's'} successfully deleted to project ${projectId}`))
+																	})
+															})
+													}
+												})
+										}
+									})
 							})
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => removeStuffs(options))
 					else
-						throw new Error('Ops not supported yet')
+						throw new Error('Oops!!! This is not supported yet')
 				})
 			}).catch(e => {
 				waitDone()
@@ -141,6 +141,22 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 			})
 	})
 	.then(() => removeStuffs(merge(options, { question: 'What else do you want to do?' })))
+
+const _chooseCronId = (choices) => askQuestion(question('Enter the Cron job ids you want to delete (ex: 1,2,3): '))
+	.then(answer => {
+		choices = choices || []
+		const ids = (answer || '').split(',').map(x => x.trim()*1).filter(x => x)
+		const invalidIds = ids.filter(id => !choices.some(c => c == id))
+		if (!answer) {
+			console.log(error('You must enter at least one id'))
+			return _chooseCronId(choices)
+		} else if (invalidIds.length > 0) {
+			const [ idLabel, verbLabel ] = invalidIds.length == 1 ? [ 'id', 'doesn\'t' ] : [ 'ids', 'don\'t' ]
+			console.log(error(`The ${idLabel} ${bold(invalidIds.join(','))} ${verbLabel} exist`))
+			return _chooseCronId(choices)
+		} else 
+			return ids
+	})
 
 const _getAppJsonFiles = (options={}) => file.getJsonFiles(options.projectPath, options)
 	.catch(() => [])

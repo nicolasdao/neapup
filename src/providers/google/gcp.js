@@ -14,7 +14,7 @@ const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
 const fetch = require('../../utils/fetch')
 const { info, highlight, cmd, link, debugInfo, bold, error } = require('../../utils/console')
-const { promise, identity, collection, obj: objectHelper } = require('../../utils/index')
+const { promise, identity, collection, obj: objectHelper, yaml } = require('../../utils/index')
 
 // OAUTH
 const OAUTH_TOKEN_URL = () => 'https://www.googleapis.com/oauth2/v4/token'
@@ -25,17 +25,25 @@ const PROJECTS_URL = (projectId) => `https://cloudresourcemanager.googleapis.com
 const BILLING_PAGE = projectId => `https://console.cloud.google.com/billing/linkedaccount?project=${projectId}&folder&organizationId`
 const BILLING_INFO_URL = projectId => `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
 // BUCKET
-const CREATE_BUCKET_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
-const UPLOAD_TO_BUCKET_URL = (bucketName, fileName, projectId) => `https://www.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucketName)}/o?uploadType=media&name=${encodeURIComponent(fileName)}&project=${encodeURIComponent(projectId)}`
+const BUCKET_FILE_URL = (bucketName, filepath) => `https://www.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}${ filepath ? `/o/${encodeURIComponent(filepath)}` : ''}`
+const BUCKET_CREATE_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
+const BUCKET_UPLOAD_URL = (bucketName, fileName, projectId) => `https://www.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucketName)}/o?uploadType=media&name=${encodeURIComponent(fileName)}&project=${encodeURIComponent(projectId)}`
 // APP ENGINE
-const APP_DETAILS_URL = projectId => `https://appengine.googleapis.com/v1/apps/${projectId}`
-const CREATE_APP_URL = () => 'https://appengine.googleapis.com/v1/apps'
-const APP_SERVICE_URL = (projectId, service) => `https://appengine.googleapis.com/v1/apps/${projectId}/services${service ? `/${service}` : ''}`
-const APP_SERVICE_VERSION_URL = (projectId, service, version) => `${APP_SERVICE_URL(projectId, service)}/versions${version ? `/${version}` : ''}`
-const DEPLOY_APP_URL = (projectId, service='default') => APP_SERVICE_VERSION_URL(projectId, service)
-const OPS_STATUS_URL = (projectId, operationId) => `https://appengine.googleapis.com/v1/apps/${projectId}/operations/${operationId}`
-const MIGRATE_ALL_TRAFFIC = (projectId, service='default') => `https://appengine.googleapis.com/v1/apps/${projectId}/services/${service}/?updateMask=split`
-const DOMAINS_URL = (projectId, domain) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings${domain ? `/${domain}` : ''}`
+const APP_ENG_DETAILS_URL = projectId => `https://appengine.googleapis.com/v1/apps/${projectId}`
+const APP_ENG_CREATE_URL = () => 'https://appengine.googleapis.com/v1/apps'
+const APP_ENG_SERVICE_URL = (projectId, service) => `https://appengine.googleapis.com/v1/apps/${projectId}/services${service ? `/${service}` : ''}`
+const APP_ENG_SERVICE_VERSION_URL = (projectId, service, version) => `${APP_ENG_SERVICE_URL(projectId, service)}/versions${version ? `/${version}` : ''}`
+const APP_ENG_DEPLOY_URL = (projectId, service='default') => APP_ENG_SERVICE_VERSION_URL(projectId, service)
+const APP_ENG_OPS_STATUS_URL = (projectId, operationId) => `https://appengine.googleapis.com/v1/apps/${projectId}/operations/${operationId}`
+const APP_ENG_MIGRATE_ALL_TRAFFIC = (projectId, service='default') => `https://appengine.googleapis.com/v1/apps/${projectId}/services/${service}/?updateMask=split`
+const APP_ENG_DOMAINS_URL = (projectId, domain) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings${domain ? `/${domain}` : ''}`
+const APP_ENG_CRON_UPDATE_URL = (projectId) => `https://appengine.google.com/api/cron/update?app_id=${projectId}`
+/*eslint-disable */
+const APP_ENG_DISPATCH_UPDATE_URL = (projectId) => `https://appengine.google.com/api/dispatch/update?app_id=${projectId}`
+const APP_ENG_DOS_UPDATE_URL = (projectId) => `https://appengine.google.com/api/dos/update?app_id=${projectId}`
+const APP_ENG_DATASTORE_UPDATE_URL = (projectId) => `https://appengine.google.com/api/datastore/index/add?app_id=${projectId}`
+const APP_ENG_QUEUE_UPDATE_URL = (projectId) => `https://appengine.google.com/api/queue/update?app_id=${projectId}`
+/*eslint-enable */
 // SERVICE MGMT
 const SERVICE_MGMT_URL = (serviceName, enable) => `https://servicemanagement.googleapis.com/v1/services/${serviceName ? `${serviceName}${enable || ''}`: ''}`
 const SERVICE_MGMT_OPS_URL = (opsId) => `https://servicemanagement.googleapis.com/v1/operations/${opsId}`
@@ -444,12 +452,61 @@ const checkServiceOperationStatus = (operationId, token, options={ debug:false }
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+const getBucketFile = (bucket, filepath, token, options={}) => Promise.resolve(null).then(() => {
+	_showDebug('Requesting a bucket\'s file from Google Cloud Platform.', options)
+	_validateRequiredParams({ token })
+
+	const contentType = filepath ? _getContentType(filepath) : 'application/json'
+	return fetch.get(`${BUCKET_FILE_URL(bucket, filepath)}${options._content ? '?alt=media' : ''}`, {
+		Accept: contentType,
+		Authorization: `Bearer ${token}`
+	}, objectHelper.merge(options, { resParsingMethod: contentType == 'application/text' ? 'text' : 'json' }))
+})
+
+/**
+ * [description]
+ * @param  {[type]} bucket   						[description]
+ * @param  {[type]} filepath 						[description]
+ * @param  {[type]} token    						[description]
+ * @param  {Object} options.createBucketIfNotExist  [description]
+ * @param  {Object} options.projectId  				REQUIRED is 'createBucketIfNotExist' set to true
+ * @return {[type]}          						[description]
+ */
+const getBucketFileContent = (bucket, filepath, token, options={}) => {
+	if (options.createBucketIfNotExist) {
+		_validateRequiredParams({ projectId: options.projectId })
+		// 1. check the bucket exists
+		return getBucketFile(bucket, null, token, objectHelper.merge(options, { _content: false, verbose: false }))
+		// 1.1. if it does not exist, create it
+			.catch(e => {
+				try {
+					const er = JSON.parse(e.message)
+					if (er.code == 404)
+						return createBucket(bucket, options.projectId, token)
+							.then(() => ({ status: 200, data: '', error: true }))
+				} catch(_e) {
+					(() => {
+						throw e
+					})(_e)
+				}
+				throw e
+			})
+			.then(res => {
+				if (res.error)
+					return res 
+				else 
+					return getBucketFile(bucket, filepath, token, objectHelper.merge(options, { _content: true }))
+			})
+	} else 
+		return getBucketFile(bucket, filepath, token, objectHelper.merge(options, { _content: true }))
+}
+
 const createBucket = (name, projectId, token, options={ debug:false, verbose:true }) => Promise.resolve(null).then(() => {
 	const opts = Object.assign({ debug:false, verbose:true }, options)
 	_validateRequiredParams({ name, token })
 	_showDebug(`Creating a new bucket called ${bold(name)} in Google Cloud Platform's project ${bold(projectId)}.`, opts)
 
-	return fetch.post(CREATE_BUCKET_URL(projectId), {
+	return fetch.post(BUCKET_CREATE_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({ name }), opts)
@@ -460,17 +517,23 @@ const createBucket = (name, projectId, token, options={ debug:false, verbose:tru
 		})
 })
 
-const uploadZipFileToBucket = (zip, bucket, token, options={ debug:false }) => Promise.resolve(null).then(() => {
-	const { name: zipName, file: zipFile  } = zip || {}
-	const { name: bucketName, projectId } = bucket || {}
-	_validateRequiredParams({ zipName, zipFile, bucketName, projectId, token })
-	_showDebug(`Uploading a new zip file to Google Cloud Platform's project ${bold(bucket.projectId)} in bucket ${bold(bucket.name)}.`, options)
+const CONTENT_TYPES = { 'zip': 'application/zip', 'json': 'application/json' }
+const _getContentType = file => {
+	const ext = ((file || '').split('.').slice(-1)[0] || '').trim().toLowerCase()
+	return CONTENT_TYPES[ext] || 'application/text'
+}
 
-	return fetch.post(UPLOAD_TO_BUCKET_URL(bucket.name, zip.name, bucket.projectId), {
-		'Content-Type': 'application/zip',
-		'Content-Length': zip.file.length,
+const uploadFileToBucket = (projectId, bucket, file, token, options={}) => Promise.resolve(null).then(() => {
+	const { name: fileName, content } = file || {}
+	_validateRequiredParams({ content, fileName, bucket, projectId, token })
+	_showDebug(`Uploading a new file to Google Cloud Platform's project ${bold(projectId)} in bucket ${bold(bucket)}.`, options)
+
+	const contentType = _getContentType(fileName)
+	return fetch.post(BUCKET_UPLOAD_URL(bucket, fileName, projectId), {
+		'Content-Type': contentType,
+		'Content-Length': content.length,
 		Authorization: `Bearer ${token}`
-	}, zip.file)
+	}, content, objectHelper.merge(options, { resParsingMethod: contentType == 'application/text' ? 'text' : 'json' }))
 })
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -496,7 +559,7 @@ const getAppDetails = (projectId, token, options={ debug:false }) => Promise.res
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Getting the ${bold(projectId)}'s App Engine details from Google Cloud Platform.`, options)
 
-	return fetch.get(APP_DETAILS_URL(projectId), {
+	return fetch.get(APP_ENG_DETAILS_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, { verbose: false }).catch(e => {
@@ -555,7 +618,7 @@ const createApp = (projectId, regionId, token, options={ debug:false }) => _vali
 	_validateRequiredParams({ projectId, regionId, token })
 	_showDebug(`Creating a new App Engine in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.post(CREATE_APP_URL(), {
+	return fetch.post(APP_ENG_CREATE_URL(), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	},
@@ -618,7 +681,7 @@ const deployApp = (projectId, service, version, bucket, zipFile, fileCount, toke
 
 	_showDebug(`Deploying service to Google Cloud Platform's project ${bold(projectId)}.\n${payload}`, options)
 
-	return fetch.post(DEPLOY_APP_URL(projectId, service), {
+	return fetch.post(APP_ENG_DEPLOY_URL(projectId, service), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, payload, objectHelper.merge(options, { verbose: false }))
@@ -686,7 +749,7 @@ const checkOperationStatus = (projectId, operationId, token, options={ debug:fal
 	_validateRequiredParams({ operationId, projectId, token })
 	_showDebug(`Requesting operation status from Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.get(OPS_STATUS_URL(projectId, operationId), {
+	return fetch.get(APP_ENG_OPS_STATUS_URL(projectId, operationId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, { verbose: false }).catch(e => {
@@ -718,7 +781,7 @@ const getService = (projectId, service, token, options={ debug:false }) => Promi
 	_validateRequiredParams({ service, projectId, token })
 	_showDebug(`Requesting service ${bold(service)} for Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	return fetch.get(APP_SERVICE_URL(projectId, service), {
+	return fetch.get(APP_ENG_SERVICE_URL(projectId, service), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, { verbose: false })
@@ -771,7 +834,7 @@ const listServices = (projectId, token, options={ debug:false, includeVersions:f
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting list of services from Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	return fetch.get(APP_SERVICE_URL(projectId), {
+	return fetch.get(APP_ENG_SERVICE_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, { verbose: options.verbose })
@@ -784,7 +847,7 @@ const listServices = (projectId, token, options={ debug:false, includeVersions:f
 				}))
 				return Promise.all(getVersions).then(services => ({ status, data: services || [] }))
 			}	
-			return { status, data: services }
+			return { status, data: services || [] }
 		})
 })
 // 2.1. APP ENGINE APIS - SERVICES - MAIN - END
@@ -794,7 +857,7 @@ const getServiceVersion = (projectId, service, version, token, options={}) => Pr
 	_validateRequiredParams({ service, projectId, version, token })
 	_showDebug(`Requesting version ${bold(version)} from service ${bold(service)} for Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	const uri = `${APP_SERVICE_VERSION_URL(projectId, service, version)}${options.fullView ? '?view=FULL' : ''}`
+	const uri = `${APP_ENG_SERVICE_VERSION_URL(projectId, service, version)}${options.fullView ? '?view=FULL' : ''}`
 	return fetch.get(uri, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
@@ -805,7 +868,7 @@ const listServiceVersions = (projectId, service, token, options={ debug:false })
 	_validateRequiredParams({ service, projectId, token })
 	_showDebug(`Requesting list of all version for service ${bold(service)} Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	return fetch.get(APP_SERVICE_VERSION_URL(projectId, service) + '?pageSize=2000', {
+	return fetch.get(APP_ENG_SERVICE_VERSION_URL(projectId, service) + '?pageSize=2000', {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	})
@@ -848,7 +911,7 @@ const updateServiceVersion = (projectId, service, version, token, patch={}, opti
 	const body =JSON.stringify(patch, null, ' ')
 	_showDebug(`Updating a version for service ${bold(service)} on Google Cloud Platform's App Engine ${bold(projectId)}. Update details: ${body}`, options)
 
-	const url = `${APP_SERVICE_VERSION_URL(projectId, service, version)}?${_createUpdateMaskQuery(patch)}`
+	const url = `${APP_ENG_SERVICE_VERSION_URL(projectId, service, version)}?${_createUpdateMaskQuery(patch)}`
 	return fetch.patch(url, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
@@ -959,7 +1022,7 @@ const deleteServiceVersion = (projectId, service, version, token, options={ debu
 	_validateRequiredParams({ projectId, service, version, token })
 	_showDebug(`Deleting a version for service ${bold(service)} on Google Cloud Platform's App Engine ${bold(projectId)}.`, options)
 
-	return fetch.delete(APP_SERVICE_VERSION_URL(projectId, service, version), {
+	return fetch.delete(APP_ENG_SERVICE_VERSION_URL(projectId, service, version), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}).then(res => {
@@ -976,7 +1039,7 @@ const migrateAllTraffic = (projectId, service, version, token, options={ debug:f
 	let allocations = {}
 	allocations[version] = 1
 
-	return fetch.patch(MIGRATE_ALL_TRAFFIC(projectId, service), {
+	return fetch.patch(APP_ENG_MIGRATE_ALL_TRAFFIC(projectId, service), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({ split: { allocations } })).then(res => {
@@ -998,7 +1061,7 @@ const deleteService = (projectId, service, token, options={}) => Promise.resolve
 	_validateRequiredParams({ projectId, service })
 	_showDebug(`Deleting service for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.delete(APP_SERVICE_URL(projectId, service), {
+	return fetch.delete(APP_ENG_SERVICE_URL(projectId, service), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null ,options)
@@ -1040,7 +1103,7 @@ const getDomain = (projectId, domain, token, options={}) => Promise.resolve(null
 	_validateRequiredParams({ projectId, domain, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.get(DOMAINS_URL(projectId, domain), {
+	return fetch.get(APP_ENG_DOMAINS_URL(projectId, domain), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, options)
@@ -1051,7 +1114,7 @@ const listDomains = (projectId, token, options={}) => Promise.resolve(null).then
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.get(DOMAINS_URL(projectId), {
+	return fetch.get(APP_ENG_DOMAINS_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, options)
@@ -1070,7 +1133,7 @@ const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(n
 	_validateRequiredParams({ projectId, domain, token })
 	_showDebug(`Requesting all the domains for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.delete(DOMAINS_URL(projectId, domain), {
+	return fetch.delete(APP_ENG_DOMAINS_URL(projectId, domain), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null ,options)
@@ -1099,6 +1162,66 @@ const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(n
 
 ///////////////////////////////////////////////////////////////////
 /// 3. APP ENGINE APIS - DOMAINS -  END
+///////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////
+/// 4. APP ENGINE APIS - CONFIGS -  START
+///////////////////////////////////////////////////////////////////
+
+const getCron = (projectId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Getting CRON job details for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return getBucketFileContent(`${projectId}-neapup-config`, 'cron.yaml', token, { projectId, createBucketIfNotExist: true, verbose: false })
+		.then(({ status, data }) => data && data.indexOf && data.indexOf('No such object:') < 0 ? { status, data: (yaml.yamlToObj(data) || {}).cron || [] } : { status, data: [] })
+		.catch(e => {
+			try {
+				const er = JSON.parse(e.message)
+				if (er.code == 404)
+					return { status: 404, data: [] }
+			} catch(_e) {
+				(() => {
+					throw e
+				})(_e)
+			}
+			throw e
+		})
+})
+
+const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Updating CRON job for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const bodyForGoogle = cronJobs && cronJobs.length > 0 
+		? yaml.objToYaml({ cron: cronJobs.map(c => {
+			let cj = {
+				description: c.description || '',
+				url: c.url || '/',
+				target: c.target || 'default',
+				schedule: c.schedule
+			}
+			if (c.timezone)
+				cj.timezone = c.timezone
+			if (c.retryParameters)
+				cj.retryParameters = c.retryParameters
+			return cj
+		})})
+		: 'cron:'
+
+	const bodyForNeapUp = cronJobs && cronJobs.length > 0 ? yaml.objToYaml({ cron: cronJobs }) : 'cron:' 
+
+	return fetch.post(APP_ENG_CRON_UPDATE_URL(projectId), {
+		'Content-Type': 'application/octet-stream',
+		'X-appcfg-api-version': '1',
+		'content-length': bodyForGoogle.length,
+		Authorization: `Bearer ${token}`
+	}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
+		.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-config`, { name: 'cron.yaml', content: bodyForNeapUp }, token, options).then(() => res))
+})
+
+///////////////////////////////////////////////////////////////////
+/// 4. APP ENGINE APIS - CONFIGS -  END
 ///////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1245,8 +1368,10 @@ module.exports = {
 		}
 	},
 	bucket: {
+		'get': getBucketFileContent,
+		getInfo: getBucketFile,
 		create: createBucket,
-		uploadZip: uploadZipFileToBucket
+		uploadFile: uploadFileToBucket
 	},
 	app: {
 		'get': getAppDetails,
@@ -1274,6 +1399,10 @@ module.exports = {
 			'get': getDomain,
 			list: listDomains,
 			delete: deleteDomain
+		},
+		cron: {
+			'get': getCron,
+			update: updateCron
 		}
 	},
 	serviceAPI: {

@@ -64,11 +64,18 @@ const getServiceAPI = url => {
 		return null
 }
 
+const processResponse = (res, options={}) => {
+	if (options.resParsingMethod == 'text')
+		return res.text().then(data => ({ status: res.status, data }))
+	else
+		return res.json().then(data => ({ status: res.status, data }))
+}
+
 const getData = (url, headers={}, options={ verbose:true }) => Promise.resolve(null).then(() => {
 	let { debug=false, verbose=true, retryCount=0 } = options || {}
 	retryCount++
 	return fetch(url, { method: 'GET', headers })
-		.then(res => res.json().then(data => ({ status: res.status, data })))
+		.then(res => processResponse(res, options))
 		.then(res => errorHandler200(res, { debug, verbose, retryCount }))
 		.catch(e => errorHandler(e, url, () => getData(url, headers, { debug, verbose, retryCount }), retryCount, { debug } ))
 })
@@ -77,7 +84,7 @@ const postData = (url, headers={}, body, options={ verbose:true }) => Promise.re
 	let { debug=false, verbose=true, retryCount=0 } = options || {}
 	retryCount++
 	return fetch(url, { method: 'POST', headers, body })
-		.then(res => res.json().then(data => ({ status: res.status, data })))
+		.then(res => processResponse(res, options))
 		.then(res => errorHandler200(res, { debug, verbose, retryCount }))
 		.catch(e => errorHandler(e, url, () => postData(url, headers, body, { debug, verbose, retryCount }), retryCount, { debug }))
 })
@@ -86,7 +93,7 @@ const deleteData = (url, headers={}, body, options={ verbose:true }) => Promise.
 	let { debug=false, verbose=true, retryCount=0 } = options || {}
 	retryCount++
 	return fetch(url, { method: 'DELETE', headers, body })
-		.then(res => res.json().then(data => ({ status: res.status, data })))
+		.then(res => processResponse(res, options))
 		.then(res => errorHandler200(res, { debug, verbose, retryCount }))
 		.catch(e => errorHandler(e, url, () => postData(url, headers, body, { debug, verbose, retryCount }), retryCount, { debug }))
 })
@@ -95,7 +102,7 @@ const patchData = (url, headers={}, body, options={ verbose:true }) => Promise.r
 	let { debug=false, verbose=true, retryCount=0 } = options || {}
 	retryCount++
 	return fetch(url, { method: 'PATCH', headers, body })
-		.then(res => res.json().then(data => ({ status: res.status, data })))
+		.then(res => processResponse(res, options))
 		.then(res => errorHandler200(res, { debug, verbose, retryCount }))
 		.catch(e => errorHandler(e, url, () => patchData(url, headers, body, { debug, verbose, retryCount }), retryCount, { debug }))
 })

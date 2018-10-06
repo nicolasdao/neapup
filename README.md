@@ -1,3 +1,11 @@
+# How To Use Me
+
+```js
+npm run insta
+```
+
+This command will pull the latest changes from git, and re-install neapup globally. 
+
 
 # About Google Cloud App Engine
 ## Setting Up Custom Domain

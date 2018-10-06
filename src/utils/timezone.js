@@ -6,11 +6,12 @@
  * LICENSE file in the root directory of this source tree.
 */
 
-const core = require('./core')
+const moment = require('moment-timezone')
 
-module.exports = Object.assign(core, {
-	file: require('./files'),
-	promise: require('./promise'),
-	yaml: require('./yaml'),
-	timezone: require('./timezone')
-})
+const getCurrent = moment.tz.guess
+const getAll = moment.tz.names
+
+module.exports = {
+	all: getAll,
+	system: getCurrent
+}

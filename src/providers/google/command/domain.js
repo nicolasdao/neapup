@@ -26,7 +26,7 @@ const manageDomains = (options={}) => utils.project.confirm(merge(options, { sel
 					{ name: ' 1. List Custom Domains', value: 'list' },
 					{ name: ' 2. Add a Custom Domain', value: 'add' },
 					{ name: ' 3. Delete a Custom Domain', value: 'delete' },
-					{ name: '[Login to another Google Account]', value: 'account' }
+					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
@@ -97,7 +97,7 @@ const manageDomains = (options={}) => utils.project.confirm(merge(options, { sel
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => manageDomains(options))
 					else
-						throw new Error('Ops not supported yet')
+						throw new Error('Oops!!! This is not supported yet')
 				})
 			}).catch(e => {
 				waitDone()

@@ -26,7 +26,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 					{ name: ' 1. List Services', value: 'services' },
 					{ name: ' 2. List Projects', value: 'projects' },
 					{ name: ' 3. List Custom Domains', value: 'domains' },
-					{ name: '[Login to another Google Account]', value: 'account' }
+					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
@@ -169,7 +169,7 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, comeBackTo
 					const authChoices = [
 						...authorizedProjects.map(value => ({ name: `List Services for project ${bold(value)}`, value })),
 						{ name: 'List Services from another project', value: '[other]' },
-						{ name: 'Login to another Google Account', value: 'account' }
+						{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 					]
 
 					const formattedChoices = authChoices.map((x, idx) => ({

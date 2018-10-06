@@ -19,7 +19,8 @@ module.exports = {
 	clean: require('./clean'),
 	manage: require('./manage'),
 	domain: require('./domain'),
-	remove: require('./remove')
+	remove: require('./remove'),
+	add: require('./add')
 }
 
 
