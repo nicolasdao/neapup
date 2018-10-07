@@ -38,11 +38,11 @@ const APP_ENG_OPS_STATUS_URL = (projectId, operationId) => `https://appengine.go
 const APP_ENG_MIGRATE_ALL_TRAFFIC = (projectId, service='default') => `https://appengine.googleapis.com/v1/apps/${projectId}/services/${service}/?updateMask=split`
 const APP_ENG_DOMAINS_URL = (projectId, domain) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings${domain ? `/${domain}` : ''}`
 const APP_ENG_CRON_UPDATE_URL = (projectId) => `https://appengine.google.com/api/cron/update?app_id=${projectId}`
+const APP_ENG_QUEUE_UPDATE_URL = (projectId) => `https://appengine.google.com/api/queue/update?app_id=${projectId}`
 /*eslint-disable */
 const APP_ENG_DISPATCH_UPDATE_URL = (projectId) => `https://appengine.google.com/api/dispatch/update?app_id=${projectId}`
 const APP_ENG_DOS_UPDATE_URL = (projectId) => `https://appengine.google.com/api/dos/update?app_id=${projectId}`
 const APP_ENG_DATASTORE_UPDATE_URL = (projectId) => `https://appengine.google.com/api/datastore/index/add?app_id=${projectId}`
-const APP_ENG_QUEUE_UPDATE_URL = (projectId) => `https://appengine.google.com/api/queue/update?app_id=${projectId}`
 /*eslint-enable */
 // SERVICE MGMT
 const SERVICE_MGMT_URL = (serviceName, enable) => `https://servicemanagement.googleapis.com/v1/services/${serviceName ? `${serviceName}${enable || ''}`: ''}`
@@ -1168,11 +1168,12 @@ const deleteDomain = (projectId, domain, token, options={}) => Promise.resolve(n
 /// 4. APP ENGINE APIS - CONFIGS -  START
 ///////////////////////////////////////////////////////////////////
 
-const getCron = (projectId, token, options={}) => Promise.resolve(null).then(() => {
-	_validateRequiredParams({ projectId, token })
-	_showDebug(`Getting CRON job details for Google Cloud Platform's project ${bold(projectId)}.`, options)
+const _getYamlConfig = (projectId, fileName, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, fileName, token })
+	_showDebug(`Getting ${fileName} for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return getBucketFileContent(`${projectId}-neapup-config`, 'cron.yaml', token, { projectId, createBucketIfNotExist: true, verbose: false })
+	const filePrefix = fileName.split('.')[0].trim()
+	return getBucketFileContent(`${projectId}-neapup-${filePrefix}`, fileName, token, { projectId, createBucketIfNotExist: true, verbose: false })
 		.then(({ status, data }) => data && data.indexOf && data.indexOf('No such object:') < 0 ? { status, data: (yaml.yamlToObj(data) || {}).cron || [] } : { status, data: [] })
 		.catch(e => {
 			try {
@@ -1187,6 +1188,9 @@ const getCron = (projectId, token, options={}) => Promise.resolve(null).then(() 
 			throw e
 		})
 })
+
+const getCron = (projectId, token, options={}) => _getYamlConfig(projectId, 'cron.yaml',token, options)
+const getQueues = (projectId, token, options={}) => _getYamlConfig(projectId, 'queue.yaml',token, options)
 
 const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, token })
@@ -1203,7 +1207,7 @@ const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(n
 			if (c.timezone)
 				cj.timezone = c.timezone
 			if (c.retryParameters)
-				cj.retryParameters = c.retryParameters
+				cj.retry_parameters = c.retryParameters
 			return cj
 		})})
 		: 'cron:'
@@ -1216,9 +1220,43 @@ const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(n
 		'content-length': bodyForGoogle.length,
 		Authorization: `Bearer ${token}`
 	}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
-		.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
-		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-config`, { name: 'cron.yaml', content: bodyForNeapUp }, token, options).then(() => res))
+		.then(res => ({ status: res.status, data: res.data || {} }))
+		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-cron`, { name: 'cron.yaml', content: bodyForNeapUp }, token, options).then(() => res))
 })
+
+const updateQueue = (projectId, queues, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Updating Task queues job for Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const bodyForGoogle = queues && queues.length > 0 
+		? yaml.objToYaml({ queue: queues.map(c => {
+			let cj = {
+				name: c.name,
+				target: c.target || 'default',
+				rate: c.rate,
+				bucket_size: c.bucketSize || 5,
+				max_concurrent_requests: c.maxConcurrentRequests || 1000
+			}
+			if (c.retryParameters)
+				cj.retry_parameters = c.retryParameters
+			return cj
+		})})
+		: 'queue:'
+
+	const bodyForNeapUp = queues && queues.length > 0 ? yaml.objToYaml({ cron: queues }) : 'queue:' 
+
+	return fetch.post(APP_ENG_QUEUE_UPDATE_URL(projectId), {
+		'Content-Type': 'application/octet-stream',
+		'X-appcfg-api-version': '1',
+		'content-length': bodyForGoogle.length,
+		Authorization: `Bearer ${token}`
+	}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
+		.then(res => {
+			return { status: res.status, data: res.data || {} }
+		})
+		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-queue`, { name: 'queue.yaml', content: bodyForNeapUp }, token, options).then(() => res))
+})
+
 
 ///////////////////////////////////////////////////////////////////
 /// 4. APP ENGINE APIS - CONFIGS -  END
@@ -1403,6 +1441,10 @@ module.exports = {
 		cron: {
 			'get': getCron,
 			update: updateCron
+		},
+		queue: {
+			'get': getQueues,
+			update: updateQueue
 		}
 	},
 	serviceAPI: {

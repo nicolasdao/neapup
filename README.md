@@ -8,6 +8,15 @@ This command will pull the latest changes from git, and re-install neapup global
 
 
 # About Google Cloud App Engine
+## Task Queues
+### Creating & Managing Pull Queues
+
+The APIs for managing queues is confusing. Previously, you would have used a `queue.yaml` similar to the Cron job setup. But more recently, Google Cloud released a new API called v2beta3. This REST api is better, otherwise, you need to rely on the more closed RPC Google SDK. 
+
+- [New API To Manage Task Queues](https://cloud.google.com/tasks/docs/reference/rest/v2beta3/projects.locations.queues)
+- [How To Create & Configure Push Queues Using The `queue.yaml`](https://cloud.google.com/appengine/docs/standard/python/taskqueue/push/creating-push-queues)
+- [What The Handler Will Receive](https://cloud.google.com/appengine/docs/standard/java/taskqueue/push/creating-handlers)
+
 ## Setting Up Custom Domain
 ### Overview
 

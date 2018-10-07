@@ -10,10 +10,10 @@ const path = require('path')
 const url = require('url')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, warn, link, askQuestion, question, success, displayTable, searchAnswer, info } = require('../../../utils/console')
+const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info } = require('../../../utils/console')
 const { obj: { merge }, file, collection, timezone } = require('../../../utils')
 const projectHelper = require('../project')
-const { listDomains, chooseAProject } = require('./list')
+const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
 
 const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
@@ -28,6 +28,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 1. Custom Domain', value: 'domain' },
 					{ name: ' 2. Routing Rule', value: 'routing' },
 					{ name: ' 3. Cron Job', value: 'cron' },
+					{ name: ' 4. Task queue', value: 'queue' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -127,62 +128,102 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 										}
 									})
 							})
-					else if (answer == 'routing') 
+					else if (answer == 'queue') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Listing all domains for project ${bold(projectId)}`)
-								return listDomains(projectId, token, merge(options, { displayOff: true }))
-									.then(domains => ({ domains, projectId }))
-							})
-							.then(({ domains, projectId }) => {
-								waitDone()
-								domains = domains || {}
-								const domainList = Object.keys(domains)
-								if (domainList.length == 0) {
-									console.log('\n   No custom domains found\n')
-									return
-								}
-								const domainNames = Object.keys(domains).reduce((acc, domain) => {
-									const records = domains[domain]
-									records.map(r => ({ name: `${r.name}.${domain}`, isDomain: r.type != 'CNAME', domain }))
-										.forEach(r => acc[r.name] = { isDomain: r.isDomain, records, domain: r.domain })
-									return acc
-								}, {})
-								const choices = Object.keys(domainNames).map((domainName, idx) => ({ name: ` ${idx+1}. ${domainName}`, value: domainName }))
-								return promptList({ message: 'Which domain/subdomain do you want to delete?', choices, separator: false }).then(answer => {
-									if (answer) {
-										const isNotSetupAsSubdomain = domainNames[answer].isDomain
-										const subDomains = (domainNames[answer].records || []).filter(r => r.type == 'CNAME')
-										const action = (isNotSetupAsSubdomain && subDomains.length > 0)
-											? Promise.resolve(null).then(() => {
-												console.log(warn(`Deleting ${link(bold(answer))} will also delete its subdomains`))
-												return askQuestion(question('Are you sure you want to proceed (Y/n) ? '))
-											})
-											: Promise.resolve(true)
+								waitDone = wait(`Getting services for project ${bold(projectId)}`)
+								return gcp.app.service.list(projectId, token, merge(options, { verbose: false }))
+									.then(({ data: services }) => {
+										waitDone()
+										if (services.length == 0) {
+											console.log(info(`No services found for project ${bold(projectId)}`))
+											console.log(info('You cannot add a Task Queue if there are no services'))
+											console.log(info('Deploy at least one service and then come back here'))
+											return
+										} else {
+											const serviceChoices = services.map((s, idx) => ({ name: ` ${bold(idx+1)}. ${bold(s.id)}`, value: s.id }))
+											waitDone = wait(`Getting Task Queue config for project ${bold(projectId)}`)
+											return gcp.app.queue.get(projectId, token, options).then(({ data: queues }) => {
+												waitDone()
+												const title = `Task Queues For Project ${projectId}`
+												console.log(`\nTask Queues For Project ${bold(projectId)}`)
+												console.log(collection.seed(title.length).map(() => '=').join(''))
+												console.log(' ')
+												if (!queues || queues.length == 0)
+													console.log('   No Task Queues found\n')
+												else {
+													displayTable(queues.map((c, idx) => ({
+														id: idx + 1,
+														name: c.name,
+														service: c.target,
+														rate: c.rate,
+														'bucket size': c.bucketSize,
+														'max concurrent requests': c.maxConcurrentRequests,
+														created: c.creationDate
+													})), { indent: '   ' })
+													console.log(' ')
+												}
 
-										return action.then(yes => {
-											if (yes != 'n') {
-												const fqSubDomains = subDomains.map(x => `${x.name}.${domainNames[answer].domain}`)
-												const domainsReadyForDeletion = [...fqSubDomains, answer]
-												let counter = domainsReadyForDeletion.length
-												let label = counter > 1 ? 'domains' : 'domain'
-												waitDone = wait(`Deleting ${counter} custom ${label} in project ${bold(projectId)}`)
-												return domainsReadyForDeletion.reduce((job, d) => job.then(() =>  
-													gcp.app.domain.delete(projectId, d, token, merge(options, { confirm: true })).then(() => {
-														waitDone()
-														console.log(success(`Custom domain ${link(bold(d))} successfully deleted`))
-														counter--
-														if (counter > 0) {
-															label = counter > 1 ? 'domains' : 'domain'
-															waitDone = wait(`Deleting ${counter} custom ${label} in project ${bold(projectId)}`)
+												let taskQueueName, rate, target, bucketSize, maxConcurrentRequests
+												// 1. Add Task Queue name
+												return _enterText('Enter a Task Queue name: ', 'The Task Queue name is required')
+													.then(answer => { // 2. Add a target
+														taskQueueName = answer
+														return promptList({ 
+															message: 'Which service should react to enqueued tasks?', 
+															choices: serviceChoices, 
+															separator: false,
+															noAbort: true
+														})
+													})
+													.then(answer => { // 3. Enter a rate
+														target = answer 
+														const rateUnits = [
+															{ name: 'seconds', value: 's' },
+															{ name: 'minutes', value: 'm' },
+															{ name: 'hours', value: 'h' },
+															{ name: 'days', value: 'd' }
+														]
+														return promptList({ message: 'Choose a time unit for the frequency at which the Task Queue should be processed: ', choices: rateUnits, separator: false, noAbort: true })
+															.then(u => _chooseNumber(`How many times per ${bold(rateUnits.find(x => x.value == u).name.replace(/s$/, ''))} do you want to process this Task Queue? `, { ge: 0 }).then(n => `${n}/${u}`))
+													})
+													.then(answer => { // 4. Enter bucket size
+														rate = answer 
+														const [ freq, unit ] = rate.split('/')
+														const u = { 's': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days' }
+														return _chooseNumber(`How many items inside the Task Queue should be processed at once every ${bold(freq)} ${bold(u[unit])} (optional, default is 5) ?`, { ge: 1, default: 5 })
+													})
+													.then(answer => { // 4. Enter the max concurrent request
+														bucketSize = answer
+														return _chooseNumber('What\'s the maximum number of concurrent services that can process the Task Queue (optional, default is 1000) ?', { ge: 1, default: 1000 })
+													})
+													.then(answer => { // 5. Add the Cron
+														maxConcurrentRequests = answer
+														let queue = {
+															name: taskQueueName, 
+															rate, 
+															target, 
+															bucketSize, 
+															maxConcurrentRequests,
+															creationDate: new Date()
 														}
-													})), Promise.resolve(null))
-											}
-										})
-									}
-								})
+														const newQueues = queues || []
+														newQueues.push(queue)
+														waitDone = wait('Creating new Task Queue...')
+														return getToken(options)
+															.then(token => gcp.app.queue.update(projectId, newQueues, token, options))
+															.then(() => {
+																waitDone()
+																console.log(success(`New Task Queue successfully created in project ${projectId}`))
+															})
+													})
+											})
+										}
+									})
 							})
+					else if (answer == 'routing') 
+						throw new Error('Oops!!! This is not supported yet')
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => addStuffs(options))
 					else
@@ -195,6 +236,14 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 			})
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to do?' })))
+
+const _enterText = (q, retryQ) => askQuestion(question(q)).then(answer => {
+	if (!answer) {
+		console.log(error(retryQ))
+		return _enterText(q, retryQ)
+	} else
+		return answer
+})
 
 const _configureCronSchedule = () => Promise.resolve(null)
 	.then(() => {
@@ -321,8 +370,11 @@ const _configureCronSchedule = () => Promise.resolve(null)
 	})
 
 const _chooseNumber = (q, options={}) => askQuestion(question(q)).then(n => {
+	if (options.default && n !== 0 && !n)
+		return options.default
+
 	const nbr = n * 1
-	if (typeof(nbr) != 'number') {
+	if (n === '' || typeof(nbr) != 'number') {
 		console.log(error(`'${n}' is not a number`))
 		return _chooseNumber(q, options)
 	} else if (options.range && typeof(options.range[0]) == 'number' && typeof(options.range[1]) == 'number' && (nbr < options.range[0] || nbr > options.range[1])) {

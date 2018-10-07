@@ -9,7 +9,7 @@
 const path = require('path')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, askQuestion, question, success, info, displayTable } = require('../../../utils/console')
+const { bold, wait, error, promptList, askQuestion, question, success, displayTable } = require('../../../utils/console')
 const { obj: { merge }, file, collection } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
@@ -28,6 +28,7 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 					{ name: ' 2. Service', value: 'service' },
 					{ name: ' 3. Custom Domain', value: 'domain' },
 					{ name: ' 4. Cron Job', value: 'cron' },
+					{ name: ' 5. Task Queue', value: 'queue' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -79,52 +80,82 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Getting services for project ${bold(projectId)}`)
-								return gcp.app.service.list(projectId, token, merge(options, { verbose: false }))
-									.then(({ data: services }) => {
+								waitDone = wait(`Getting Cron config for project ${bold(projectId)}`)
+								return gcp.app.cron.get(projectId, token, options)
+									.then(({ data: cronJobs }) => {
 										waitDone()
-										if (services.length == 0) {
-											console.log(info(`No services found for project ${bold(projectId)}`))
-											console.log(info('You cannot add a Cron job if there are no services'))
-											console.log(info('Deploy at least one service and then come back here'))
-											return
-										} else {
-											waitDone = wait(`Getting Cron config for project ${bold(projectId)}`)
-											return gcp.app.cron.get(projectId, token, options)
-												.then(({ data: cronJobs }) => {
-													waitDone()
-													const title = `Cron Jobs For Project ${projectId}`
-													console.log(`\nCron Jobs For Project ${bold(projectId)}`)
-													console.log(collection.seed(title.length).map(() => '=').join(''))
-													console.log(' ')
+										const title = `Cron Jobs For Project ${projectId}`
+										console.log(`\nCron Jobs For Project ${bold(projectId)}`)
+										console.log(collection.seed(title.length).map(() => '=').join(''))
+										console.log(' ')
 
-													if (!cronJobs || cronJobs.length == 0) {
-														console.log('   No Cron jobs found\n')
-														return
-													}
-													else {
-														displayTable(cronJobs.map((c, idx) => ({
-															id: idx + 1,
-															schedule: c.schedule,
-															timezone: c.timezone,
-															url: c.url,
-															service: c.target,
-															description: c.description,
-															created: c.creationDate
-														})), { indent: '   ' })
-														console.log(' ')
-														return _chooseCronId(cronJobs.map((c,idx) => idx + 1))
-															.then(ids => {
-																const cronJobsLeft = cronJobs.filter((c,idx) => !ids.some(id => id == (idx+1)))
-																waitDone = wait(`Deleting ${ids.length} Cron job${ids.length == 1 ? '' : 's'}...`)
-																return getToken(options)
-																	.then(token => gcp.app.cron.update(projectId, cronJobsLeft, token, options))
-																	.then(() => {
-																		waitDone()
-																		console.log(success(`${ids.length} Cron job${ids.length == 1 ? '' : 's'} successfully deleted to project ${projectId}`))
-																	})
-															})
-													}
+										if (!cronJobs || cronJobs.length == 0) {
+											console.log('   No Cron jobs found\n')
+											return
+										}
+										else {
+											displayTable(cronJobs.map((c, idx) => ({
+												id: idx + 1,
+												schedule: c.schedule,
+												timezone: c.timezone,
+												url: c.url,
+												service: c.target,
+												description: c.description,
+												created: c.creationDate
+											})), { indent: '   ' })
+											console.log(' ')
+											return _chooseId('Enter the Cron job ids you want to delete (ex: 1,2,3): ', cronJobs.map((c,idx) => idx + 1))
+												.then(ids => {
+													const itemsLeft = cronJobs.filter((c,idx) => !ids.some(id => id == (idx+1)))
+													waitDone = wait(`Deleting ${ids.length} Cron job${ids.length == 1 ? '' : 's'}...`)
+													return getToken(options)
+														.then(token => gcp.app.cron.update(projectId, itemsLeft, token, options))
+														.then(() => {
+															waitDone()
+															console.log(success(`${ids.length} Cron job${ids.length == 1 ? '' : 's'} successfully deleted to project ${projectId}`))
+														})
+												})
+										}
+									})
+							})
+					else if (answer == 'queue') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Getting Task Queue config for project ${bold(projectId)}`)
+								return gcp.app.queue.get(projectId, token, options)
+									.then(({ data: queues }) => {
+										waitDone()
+										const title = `Task Queues For Project ${projectId}`
+										console.log(`\nTask Queues For Project ${bold(projectId)}`)
+										console.log(collection.seed(title.length).map(() => '=').join(''))
+										console.log(' ')
+
+										if (!queues || queues.length == 0) {
+											console.log('   No Task Queues found\n')
+											return
+										}
+										else {
+											displayTable(queues.map((c, idx) => ({
+												id: idx + 1,
+												name: c.name,
+												service: c.target,
+												rate: c.rate,
+												'bucket size': c.bucketSize,
+												'max concurrent requests': c.maxConcurrentRequests,
+												created: c.creationDate
+											})), { indent: '   ' })
+											console.log(' ')
+											return _chooseId('Enter the Task Queues ids you want to delete (ex: 1,2,3): ', queues.map((c,idx) => idx + 1))
+												.then(ids => {
+													const itemsLeft = queues.filter((c,idx) => !ids.some(id => id == (idx+1)))
+													waitDone = wait(`Deleting ${ids.length} Task Queue${ids.length == 1 ? '' : 's'}...`)
+													return getToken(options)
+														.then(token => gcp.app.queue.update(projectId, itemsLeft, token, options))
+														.then(() => {
+															waitDone()
+															console.log(success(`${ids.length} Task Queue${ids.length == 1 ? '' : 's'} successfully deleted to project ${projectId}`))
+														})
 												})
 										}
 									})
@@ -142,18 +173,18 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 	})
 	.then(() => removeStuffs(merge(options, { question: 'What else do you want to do?' })))
 
-const _chooseCronId = (choices) => askQuestion(question('Enter the Cron job ids you want to delete (ex: 1,2,3): '))
+const _chooseId = (q, choices) => askQuestion(question(q))
 	.then(answer => {
 		choices = choices || []
 		const ids = (answer || '').split(',').map(x => x.trim()*1).filter(x => x)
 		const invalidIds = ids.filter(id => !choices.some(c => c == id))
 		if (!answer) {
 			console.log(error('You must enter at least one id'))
-			return _chooseCronId(choices)
+			return _chooseId(q, choices)
 		} else if (invalidIds.length > 0) {
 			const [ idLabel, verbLabel ] = invalidIds.length == 1 ? [ 'id', 'doesn\'t' ] : [ 'ids', 'don\'t' ]
 			console.log(error(`The ${idLabel} ${bold(invalidIds.join(','))} ${verbLabel} exist`))
-			return _chooseCronId(choices)
+			return _chooseId(q, choices)
 		} else 
 			return ids
 	})
