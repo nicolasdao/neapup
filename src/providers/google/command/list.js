@@ -145,7 +145,7 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, comeBackTo
 		? Promise.all(appJsonFiles.map(f => _getHostingFromFileName(f, options.projectPath)))
 			.then(values => {
 				const projectIds = Object.keys((values || []).filter(x => x && x.projectId).reduce((acc,key) => {
-					acc[key] = true
+					acc[key.projectId] = true
 					return acc
 				}, {}))
 
