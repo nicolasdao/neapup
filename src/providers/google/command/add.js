@@ -167,7 +167,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 
 												let taskQueueName, rate, target, bucketSize, maxConcurrentRequests
 												// 1. Add Task Queue name
-												return _enterText('Enter a Task Queue name: ', 'The Task Queue name is required')
+												return _enterQueueName('Enter a Task Queue name: ', 'The Task Queue name is required')
 													.then(answer => { // 2. Add a target
 														taskQueueName = answer
 														return promptList({ 
@@ -237,12 +237,16 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
-const _enterText = (q, retryQ) => askQuestion(question(q)).then(answer => {
+const _enterQueueName = () => askQuestion(question('Enter a Task Queue name: ')).then(answer => {
 	if (!answer) {
-		console.log(error(retryQ))
-		return _enterText(q, retryQ)
-	} else
+		console.log(error('The task queue name is required.'))
+		return _enterQueueName()
+	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
 		return answer
+	else {
+		console.log(error('Invalid name. A task queue can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
+		return _enterQueueName()
+	}
 })
 
 const _configureCronSchedule = () => Promise.resolve(null)
