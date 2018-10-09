@@ -43,10 +43,18 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 							.then(({ projectId, token }) => {
 								waitDone = wait(`Deleting project ${bold(projectId)}`)
 								const startDel = Date.now()
-								return gcp.project.delete(projectId, token, merge(options, { confirm: true }))
+								return gcp.project.delete(projectId, token, merge(options, { confirm: true, verbose: false }))
 									.then(() => {
 										waitDone()
 										console.log(success(`Project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
+									})
+									.catch(e => {
+										waitDone()
+										const er = JSON.parse(e.message)
+										if (er.code == 403 && er.message && er.message.indexOf('not authorized') >= 0)
+											console.log(error('Permission to delete denied. You don\'t have enough access privileges to perform this action.'))
+										else
+											throw e
 									})
 							})
 					else if (answer == 'service') 

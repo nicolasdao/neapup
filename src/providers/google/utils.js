@@ -51,11 +51,15 @@ const confirmCurrentProject = (options={ debug:false, selectProject: false }) =>
 		////////////////////////////////////////////
 		// 2. Make sure the OAuth token is valid.
 		////////////////////////////////////////////
-		.then(({ project: projectId }) => getToken(options).then(token => ({ token, projectId })))
+		.then(({ project: projectId }) => {
+			return getToken(options).then(token => ({ token, projectId }))
+		})
 		////////////////////////////////////////////
 		// 3. Make sure the App Engine exists.
 		////////////////////////////////////////////
-		.then(({ token, projectId }) => options.skipAppEngineCheck ? { token, projectId } : _confirmAppEngineIsReady(projectId, token, options))
+		.then(({ token, projectId }) => {
+			return options.skipAppEngineCheck ? { token, projectId } : _confirmAppEngineIsReady(projectId, token, options)
+		})
 })
 
 /**
@@ -177,7 +181,9 @@ const _chooseHandlerFile = (handlers, files=[]) => Promise.resolve(null).then(()
 	}
 })
 
-const _updateHostingConfig = (hostingConfig, projectId, handlers, options) => {
+const _updateHostingConfig = (hostingConfig, projectId, handlers, options={}) => {
+	if (options.debug)
+		console.log(debugInfo(`Updating the 'hosting' property of ${options.env ? `app.${options.env}.json` : 'app.json'} (projectId ${projectId}, service: ${hostingConfig.service})`))
 	hostingConfig.handlers = handlers 
 	let props = { handlers }
 	if (!hostingConfig.projectId) {
@@ -239,7 +245,15 @@ const _initializeAppJson = (projectId, hostingConfig={}, options={}) => Promise.
 })
 
 const _confirmAppEngineIsReady = (projectId, token, options={}) => (options.projectPath ? appHosting.get(options.projectPath, options) : Promise.resolve({}))
-	.then(hostingConfig => _initializeAppJson(projectId, hostingConfig, options))
+	.then(hostingConfig => {
+		// If there are no app.json, then explicitely help create one
+		if (!hostingConfig || Object.keys(hostingConfig).length == 0) {
+			if (options.debug)
+				console.log(debugInfo(`There are no ${options.env ? `app.${options.env}.json` : 'app.json'} in your project. Creating one now and the confirming the details are ok.`))
+			options.overrideHostingConfig = true
+		}
+		return _initializeAppJson(projectId, hostingConfig, options)
+	})
 	.then((hostingConfig={}) => {
 		const appProjectId = hostingConfig.projectId
 		const appService = hostingConfig.service || 'default'

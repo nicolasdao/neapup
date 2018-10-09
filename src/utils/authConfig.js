@@ -23,6 +23,8 @@ const getAuthConfig = (options={ debug:false }) => Promise.resolve(null).then(()
 		try {
 			if (c) {
 				const config = JSON.parse(c) || {}
+				if (config && config.google && config.google.project && typeof(config.google.project) != 'string')
+					config.google.project = null
 				return config
 			} else
 				return {}

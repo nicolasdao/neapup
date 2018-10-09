@@ -13,6 +13,7 @@ const { identity, promise, obj: { merge } } = require('../../utils')
 const path = require('path')
 
 const CLOUD_TASK_SERVICE_API = 'cloudtasks.googleapis.com'
+const FLEX_SERVICE_API = 'appengineflex.googleapis.com'
 
 const getProjects = (options={ debug:false, show:false }) => getToken({ debug: (options || {}).debug }).then(token => {
 	const { debug, show } = options || {}
@@ -142,21 +143,26 @@ const createNewProject = (token, options={ debug:false }) => {
 				console.log(debugInfo(`Creating project ${bold(projectName)} (id: ${bold(projectId)}).`))
 
 			// 2. Create project
-			const createProjectDone = wait(`Creating project ${bold(projectName)} (id: ${bold(projectId)}). This should take a few seconds.\n  If it takes too long, check the status on your account: ${link('https://console.cloud.google.com/cloud-resource-manager?organizationId=0')}`)
+			let waitDone = wait(`Creating project ${bold(projectName)} (id: ${bold(projectId)}). This should take a few seconds.\n  If it takes too long, check the status on your account: ${link('https://console.cloud.google.com/cloud-resource-manager?organizationId=0')}`)
 			return gcp.project.create(projectName, projectId, token, merge(options, { confirm: true }))
 				.then(() => {
-					createProjectDone()
+					waitDone()
 					console.log(success('Project successfully created'))
 					return projectId
 				})
 				.catch(e => {
-					createProjectDone()
+					waitDone()
 					throw e
 				})
 				// 3. Enable billing
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
 				// 4. Enable Cloud Task API
-				.then(projectId => gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true })))
+				.then(projectId => {
+					waitDone = wait(`Enabling the following APIs: ${bold('Cloud Task API')}, ${bold('App Engine Flexible API')}`)
+					return gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true }))
+						.then(() => gcp.serviceAPI.enable(FLEX_SERVICE_API, projectId, token, merge(options, { confirm: true })))
+						.then(() => projectId)
+				})
 		})
 	})
 }
