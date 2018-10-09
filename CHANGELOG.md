@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.17"></a>
+## [0.22.17](https://gitlab.com/neap/neap-manager/compare/v0.22.16...v0.22.17) (2018-10-09)
+
+
+### Features
+
+* Explicitely help creating the app.json if it does not exist at deployment time ([013a2d4](https://gitlab.com/neap/neap-manager/commit/013a2d4))
+
+
+
 <a name="0.22.16"></a>
 ## [0.22.16](https://gitlab.com/neap/neap-manager/compare/v0.22.15...v0.22.16) (2018-10-09)
 
