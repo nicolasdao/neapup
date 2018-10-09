@@ -9,8 +9,10 @@ const { error, info, link, promptList, bold, debugInfo, askQuestion, question, w
 const getToken = require('./getToken')
 const authConfig = require('../../utils/authConfig')
 const gcp = require('./gcp')
-const { identity, promise } = require('../../utils')
+const { identity, promise, obj: { merge } } = require('../../utils')
 const path = require('path')
+
+const CLOUD_TASK_SERVICE_API = 'cloudtasks.googleapis.com'
 
 const getProjects = (options={ debug:false, show:false }) => getToken({ debug: (options || {}).debug }).then(token => {
 	const { debug, show } = options || {}
@@ -141,28 +143,20 @@ const createNewProject = (token, options={ debug:false }) => {
 
 			// 2. Create project
 			const createProjectDone = wait(`Creating project ${bold(projectName)} (id: ${bold(projectId)}). This should take a few seconds.\n  If it takes too long, check the status on your account: ${link('https://console.cloud.google.com/cloud-resource-manager?organizationId=0')}`)
-			return gcp.project.create(projectName, projectId, token, options)
-				.then(() => promise.check(
-					() => gcp.project.get(projectId, token, Object.assign({ verbose: false }, options)).catch(e => (() => ({ data: {} }))(e)), 
-					({ data }) => {
-						if (data && data.name) {
-							createProjectDone()
-							return true
-						}
-						else 
-							return false
-					})
-				)
+			return gcp.project.create(projectName, projectId, token, merge(options, { confirm: true }))
 				.then(() => {
+					createProjectDone()
 					console.log(success('Project successfully created'))
 					return projectId
 				})
 				.catch(e => {
-					createProjectDone(e)
+					createProjectDone()
 					throw e
 				})
 				// 3. Enable billing
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
+				// 4. Enable Cloud Task API
+				.then(projectId => gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true })))
 		})
 	})
 }

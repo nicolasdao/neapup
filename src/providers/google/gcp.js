@@ -51,6 +51,8 @@ const SERVICE_MGMT_OPS_URL = (opsId) => `https://servicemanagement.googleapis.co
 const BUILD_URL = (projectId, buildId) => `https://cloudbuild.googleapis.com/v1/projects/${projectId}/builds/${buildId}`
 // CLOUD TASK API
 const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://cloudtasks.googleapis.com/v2beta3/projects/${projectId}/locations/${locationId}/queues${queueName ? `/${queueName}${taskName ? `/tasks/${taskName}` : ''}` : ''}`
+// IAM API
+//const SERVICE_ACCOUNT_URL = projectId => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -309,7 +311,15 @@ const listProjects = (token, options={}) => Promise.resolve(null).then(() => {
 		})
 })
 
-const createProject = (name, projectId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
+/**
+ * [description]
+ * @param  {[type]}   name                                                   [description]
+ * @param  {[type]}   projectId                                              [description]
+ * @param  {[type]}   token                                                  [description]
+ * @param  {Boolean}  options.confirm                                        [description]
+ * @return {[type]}                                                          [description]
+ */
+const createProject = (name, projectId, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ name, projectId, token })
 	_showDebug(`Creating a new project on Google Cloud Platform called ${bold(name)} (id: ${bold(projectId)}).`, options)
 
@@ -319,11 +329,22 @@ const createProject = (name, projectId, token, options={ debug:false }) => Promi
 	}, JSON.stringify({
 		name,
 		projectId
-	})).then(res => {
-		if (res.data && res.data.name)
-			res.data.operationId = res.data.name.split('/').slice(-1)[0]
-		return res
-	})
+	}))
+		.then(res => {
+			if (res.data && res.data.name)
+				res.data.operationId = res.data.name.split('/').slice(-1)[0]
+			return res
+		})
+		.then(res => options.confirm
+			? promise.check(
+				() => getProject(projectId, token, objectHelper.merge(options, { verbose: false })).catch(e => (() => ({ data: {} }))(e)), 
+				({ data }) => {
+					if (data && data.name)
+						return true
+					else 
+						return false
+				})
+			: res)
 })
 
 /**
