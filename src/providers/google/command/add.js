@@ -28,7 +28,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 1. Custom Domain', value: 'domain' },
 					{ name: ' 2. Routing Rule', value: 'routing' },
 					{ name: ' 3. Cron Job', value: 'cron' },
-					{ name: ' 4. Task queue', value: 'queue' },
+					{ name: ' 4. Task Queue', value: 'queue' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -171,7 +171,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													.then(answer => { // 2. Add a target
 														taskQueueName = answer
 														return promptList({ 
-															message: 'Which service should react to enqueued tasks?', 
+															message: 'Which service should react to enqueued tasks? ', 
 															choices: serviceChoices, 
 															separator: false,
 															noAbort: true
@@ -192,11 +192,11 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 														rate = answer 
 														const [ freq, unit ] = rate.split('/')
 														const u = { 's': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days' }
-														return _chooseNumber(`How many items inside the Task Queue should be processed at once every ${bold(freq)} ${bold(u[unit])} (optional, default is 5) ?`, { ge: 1, default: 5 })
+														return _chooseNumber(`How many items inside the Task Queue should be processed at once every ${bold(freq)} ${bold(u[unit])} (optional, default is 5) ? `, { ge: 1, default: 5 })
 													})
 													.then(answer => { // 4. Enter the max concurrent request
 														bucketSize = answer
-														return _chooseNumber('What\'s the maximum number of concurrent services that can process the Task Queue (optional, default is 1000) ?', { ge: 1, default: 1000 })
+														return _chooseNumber('What\'s the maximum number of concurrent services that can process the Task Queue (optional, default is 1000) ? ', { ge: 1, default: 1000 })
 													})
 													.then(answer => { // 5. Add the Cron
 														maxConcurrentRequests = answer
@@ -235,7 +235,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 				throw e
 			})
 	})
-	.then(() => addStuffs(merge(options, { question: 'What else do you want to add?' })))
+	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
 const _enterText = (q, retryQ) => askQuestion(question(q)).then(answer => {
 	if (!answer) {
@@ -256,7 +256,7 @@ const _configureCronSchedule = () => Promise.resolve(null)
 			{ name: '1st,3rd mon,wednesday,thu of sep,oct,nov 17:00', value: 6 },
 			{ name: '1,8,15,22 of sep,oct,nov 17:00', value: 7 }
 		]
-		console.log(question('How often the Cron job should fire the service?'))
+		console.log(question('How often should the Cron job fire the service? '))
 		return promptList({ message: 'Configure the frequency using one of the following template:', choices: cronStyle, separator: false })
 	})
 	.then(answer => {

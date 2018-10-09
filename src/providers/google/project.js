@@ -54,7 +54,7 @@ const highlightCurrentProjects = (projects=[], currentProjectId) => {
 	if (!currentProject)
 		return projects
 
-	currentProject.name = `${bold('[ Current ]')} ${currentProject.name}`
+	currentProject.name = `${bold('[Current]')} ${currentProject.name}`
 	return [currentProject, ...projects.filter(p => p.value != currentProjectId)]
 }
 
@@ -63,7 +63,7 @@ const selectProject = (options={ debug:false, current: null }) => {
 	return getProjects(options).then(projects => {
 		listingProjectDone()
 		const { current } = options || {}
-		const createLabel = '[Create new project]'
+		const createLabel = 'Create new project'
 		const choices = [...highlightCurrentProjects(projects, current),{ name: createLabel, value: '[create]', short: createLabel, specialOps: true }]
 
 		const firstProject = ((projects || [])[0] || {}).value

@@ -324,21 +324,23 @@ const _promptUserToConfirm = (projectId, serviceId, locationId, token, hostingCo
 	if (options.changeAccount)
 		ask = askQuestion(question('Do you want to use another Google Account (Y/n) ? '))
 			.then(yes => yes == 'n' ? null : 'switchAccount')
-	else if (!skipMakingChoices) 
+	else if (!skipMakingChoices) {
+		const _showCurrentSettings = (projectId, locationId, serviceId, hostingConfig, choices) => {
+			console.log(info('Main settings:'))
+			console.log(`   Project: ${bold(projectId)} (${locationId})`)
+			console.log(`   Service: ${bold(serviceId)}`)
+			console.log(`   App Engine's Environment: ${bold(!hostingConfig.env || hostingConfig.env == 'standard' ? 'standard' : 'flexible')}`)
+			return promptList({ message: 'Do you want to continue?', choices, separator: false})
+		}
 		ask = (() => {
-			if (locationId) {
-				console.log(info('Main settings:'))
-				console.log(`   Project: ${bold(projectId)} (${locationId})`)
-				console.log(`   Service: ${bold(serviceId)}`)
-				console.log(`   App Engine's Environment: ${bold(!hostingConfig.env || hostingConfig.env == 'standard' ? 'standard' : 'flexible')}`)
-				return promptList({ message: 'Do you want to continue?', choices, separator: false})
-			}
+			if (locationId) 
+				return _showCurrentSettings(projectId, locationId, serviceId, hostingConfig, choices)
 			else
 				return _dealWithNoAppEngine(projectId, token, options)
 					.then(({ locationId: lId }) => locationId = lId)
-					.then(() => promptList({ message: 'Do you want to continue?', choices, separator: false}))
+					.then(() => _showCurrentSettings(projectId, locationId, serviceId, hostingConfig, choices))
 		})()
-	else
+	} else
 		ask = Promise.resolve('yes')
 
 	return ask.then(answer => {

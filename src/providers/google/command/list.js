@@ -23,21 +23,77 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. List Services', value: 'services' },
-					{ name: ' 2. List Projects', value: 'projects' },
-					{ name: ' 3. List Custom Domains', value: 'domains' },
+					{ name: ' 1. Projects', value: 'projects' },
+					{ name: ' 2. Services', value: 'services' },
+					{ name: ' 3. Custom Domains', value: 'domains' },
+					{ name: ' 4. Cron Jobs', value: 'cron' },
+					{ name: ' 5. Task Queues', value: 'queue' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
 				options.projectPath = projectHelper.getFullPath(options.projectPath)
 
-				return promptList({ message: (options.question || 'Choose one of the following options:'), choices: topLevelChoices, separator: false }).then(answer => {
+				return promptList({ message: (options.question || 'What do you want to list? '), choices: topLevelChoices, separator: false }).then(answer => {
 					if (!answer)
 						process.exit()
 					if (answer == 'services') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => listProjectServices(projectId, token, options))
+					else if (answer == 'cron') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Getting Cron config for project ${bold(projectId)}`)
+								return gcp.app.cron.get(projectId, token, options).then(({ data: cronJobs }) => {
+									waitDone()
+									const title = `Cron Jobs For Project ${projectId}`
+									console.log(`\nCron Jobs For Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!cronJobs || cronJobs.length == 0)
+										console.log('   No Cron jobs found\n')
+									else {
+										displayTable(cronJobs.map((c, idx) => ({
+											id: idx + 1,
+											schedule: c.schedule,
+											timezone: c.timezone,
+											url: c.url,
+											service: c.target,
+											description: c.description,
+											created: c.creationDate
+										})), { indent: '   ' })
+										console.log(' ')
+									}
+								})
+							})
+					else if (answer == 'queue') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Getting Task Queue config for project ${bold(projectId)}`)
+								return gcp.app.queue.get(projectId, token, options).then(({ data: queues }) => {
+									waitDone()
+									const title = `Task Queues For Project ${projectId}`
+									console.log(`\nTask Queues For Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!queues || queues.length == 0)
+										console.log('   No Task Queues found\n')
+									else {
+										displayTable(queues.map((c, idx) => ({
+											id: idx + 1,
+											name: c.name,
+											service: c.target,
+											rate: c.rate,
+											'bucket size': c.bucketSize,
+											'max concurrent requests': c.maxConcurrentRequests,
+											created: c.creationDate
+										})), { indent: '   ' })
+										console.log(' ')
+									}
+								})
+							})
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => listStuffs(options))
 					else if (answer == 'domains') 

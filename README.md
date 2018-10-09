@@ -6,6 +6,15 @@ npm run insta
 
 This command will pull the latest changes from git, and re-install neapup globally. 
 
+# Notes
+## The Google Cloud Task Queue Conundrum
+
+This API is still under dev on the Google side. It's badly documented and the way we've implemented uses a bit of the legacy API with some of the beta APIs (v2beta3). This is what there is to know if the current implementations confuses the shit out of you:
+- The queue creation is done using trhe legacy `queue.yaml` file. This file is uploaded on a per app engine basis. Technically, this file can be uploaded in all regions where App Engine is globally available, however, we have explicitely restricted it to the regions where the v2beta3 API is available. The reason is that there no ways to push tasks to queue in javascript other than using the v2beta3 API, which means that it is pointless to be able to deploy the `queue.yaml` in regions not supported by v2beta3.
+- Technically, we could have used the v2beta3 APIs to create queues, but the logic was already create, so we kept it.
+- Here is the details of what's behind our APIs:
+	- gcp.app.queue.[get, update]: Maintained using `queue.yaml`
+	- gcp.app.queue.beta.[list, create, delete]: Maintained using v2beta3. Those APIs are actually not used at this stage.
 
 # About Google Cloud App Engine
 ## Task Queues
