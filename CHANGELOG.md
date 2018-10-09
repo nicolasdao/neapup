@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.15"></a>
+## [0.22.15](https://gitlab.com/neap/neap-manager/compare/v0.22.14...v0.22.15) (2018-10-09)
+
+
+### Features
+
+* Add new listing options ([242f516](https://gitlab.com/neap/neap-manager/commit/242f516))
+
+
+
 <a name="0.22.14"></a>
 ## [0.22.14](https://gitlab.com/neap/neap-manager/compare/v0.22.13...v0.22.14) (2018-10-09)
 
