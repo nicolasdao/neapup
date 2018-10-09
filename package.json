@@ -1,6 +1,6 @@
 {
   "name": "@neap/manager",
-  "version": "0.22.13",
+  "version": "0.22.14",
   "description": "Manage Serverless Web Apps hosted on Google Cloud Platform App Engine and Functions as well as AWS Lambdas.",
   "main": "index.js",
   "contributors": [
@@ -31,7 +31,8 @@
     "push": "git push --follow-tags origin master",
     "rls": "standard-version --release-as",
     "start": "node index.js",
-    "test": "mocha"
+    "test": "mocha",
+    "v": "node version.js"
   },
   "author": "Nicolas Dao",
   "license": "BSD-3-Clause",

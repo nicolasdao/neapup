@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.14"></a>
+## [0.22.14](https://gitlab.com/neap/neap-manager/compare/v0.22.13...v0.22.14) (2018-10-09)
+
+
+### Features
+
+* Integrate the Cloud Task API ([d20f912](https://gitlab.com/neap/neap-manager/commit/d20f912))
+
+
+
 <a name="0.22.13"></a>
 ## [0.22.13](https://gitlab.com/neap/neap-manager/compare/v0.22.12...v0.22.13) (2018-10-07)
 
