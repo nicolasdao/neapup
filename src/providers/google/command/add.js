@@ -235,7 +235,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 				throw e
 			})
 	})
-	.then(() => addStuffs(merge(options, { question: 'What else do you want to do?' })))
+	.then(() => addStuffs(merge(options, { question: 'What else do you want to add?' })))
 
 const _enterText = (q, retryQ) => askQuestion(question(q)).then(answer => {
 	if (!answer) {

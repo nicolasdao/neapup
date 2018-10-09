@@ -331,11 +331,12 @@ const _promptUserToConfirm = (projectId, serviceId, locationId, token, hostingCo
 				console.log(`   Project: ${bold(projectId)} (${locationId})`)
 				console.log(`   Service: ${bold(serviceId)}`)
 				console.log(`   App Engine's Environment: ${bold(!hostingConfig.env || hostingConfig.env == 'standard' ? 'standard' : 'flexible')}`)
+				return promptList({ message: 'Do you want to continue?', choices, separator: false})
 			}
 			else
-				console.log(warn(`There is no App Engine for project ${bold(projectId)}. You won't be able to deploy or access details.`))
-
-			return promptList({ message: 'Do you want to continue?', choices, separator: false})
+				return _dealWithNoAppEngine(projectId, token, options)
+					.then(({ locationId: lId }) => locationId = lId)
+					.then(() => promptList({ message: 'Do you want to continue?', choices, separator: false}))
 		})()
 	else
 		ask = Promise.resolve('yes')

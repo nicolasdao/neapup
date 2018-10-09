@@ -49,6 +49,8 @@ const SERVICE_MGMT_URL = (serviceName, enable) => `https://servicemanagement.goo
 const SERVICE_MGMT_OPS_URL = (opsId) => `https://servicemanagement.googleapis.com/v1/operations/${opsId}`
 // CLOUD BUILDS
 const BUILD_URL = (projectId, buildId) => `https://cloudbuild.googleapis.com/v1/projects/${projectId}/builds/${buildId}`
+// CLOUD TASK API
+const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://cloudtasks.googleapis.com/v2beta3/projects/${projectId}/locations/${locationId}/queues${queueName ? `/${queueName}${taskName ? `/tasks/${taskName}` : ''}` : ''}`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -135,31 +137,32 @@ const refreshOAuthToken = ({ refresh_token, client_id, client_secret }, options=
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const requestConsent = ({ client_id, redirect_uri, scope }, stopFn, timeout, options={ debug:false }) => Promise.resolve(null).then(() => {
-	_showDebug('Opening default browser on the Google Cloud Platform Consent page.', options)
-	_validateRequiredParams({ client_id, redirect_uri, scope })
-	const query = encodeQuery({
-		client_id,
-		redirect_uri,
-		response_type: 'code',
-		scope,
-		access_type: 'offline',
-		prompt: 'consent'
+const requestConsent = ({ client_id, redirect_uri, scope }, stopFn, timeout, options={ debug:false }) => Promise.resolve(null)
+	.then(() => {
+		_showDebug('Opening default browser on the Google Cloud Platform Consent page.', options)
+		_validateRequiredParams({ client_id, redirect_uri, scope })
+		const query = encodeQuery({
+			client_id,
+			redirect_uri,
+			response_type: 'code',
+			scope,
+			access_type: 'offline',
+			prompt: 'consent'
+		})
+
+		const googleConsentScreenUrl = GCP_CONSENT_PAGE(query)
+
+		if(process.platform === 'darwin' || process.platform === 'win32') {
+			opn(googleConsentScreenUrl)
+			console.log(info('A Google Accounts login window has been opened in your default browser. Please log in there and check back here afterwards.'))
+		} else {
+			console.log(info(
+				`We'll need you to grant us access to provision your ${highlight('Google Cloud Platform')} account in order to comunicate with their API.`,
+				`To provision a dedicated set of tokens for ${cmd('neap')}, Go to ${link(googleConsentScreenUrl)} and grant access to Neap.`
+			))
+			throw new Error(`Can't browse to consent screen from platform ${process.platform} (currently supported platforms: 'darwin', 'win32').`)
+		}
 	})
-
-	const googleConsentScreenUrl = GCP_CONSENT_PAGE(query)
-
-	if(process.platform === 'darwin' || process.platform === 'win32') {
-		opn(googleConsentScreenUrl)
-		console.log(info('A Google Accounts login window has been opened in your default browser. Please log in there and check back here afterwards.'))
-	} else {
-		console.log(info(
-			`We'll need you to grant us access to provision your ${highlight('Google Cloud Platform')} account in order to comunicate with their API.`,
-			`To provision a dedicated set of tokens for ${cmd('neap')}, Go to ${link(googleConsentScreenUrl)} and grant access to Neap.`
-		))
-		throw new Error(`Can't browse to consent screen from platform ${process.platform} (currently supported platforms: 'darwin', 'win32').`)
-	}
-})
 	.then(() => promise.wait(stopFn, { timeout })) 
 
 
@@ -258,7 +261,7 @@ const testBillingEnabled = (projectId, token, options={ debug:false }) => Promis
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const getProject = (projectId, token, options={ debug:false, verbose:false }) => Promise.resolve(null).then(() => {
+const getProject = (projectId, token, options={}) => Promise.resolve(null).then(() => {
 	const opts = Object.assign({ debug:false, verbose:false }, options)
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting a project ${bold(projectId)} from Google Cloud Platform.`, opts)
@@ -588,7 +591,7 @@ const getAppRegions = () => Promise.resolve([
 	{ id: 'us-west2', label: 'us-west2 (Los Angeles)' },
 	{ id: 'us-east1', label: 'us-east1 (South Carolina)' },
 	{ id: 'us-east4', label: 'us-east4 (Northern Virginia)' },
-	{ id: 'southamerica-east1', label: 'southamerica-east1 (São Paulo) *' },
+	{ id: 'southamerica-east1', label: 'southamerica-east1 (São Paulo)' },
 	{ id: 'europe-west', label: 'europe-west (Belgium)' },
 	{ id: 'europe-west2', label: 'europe-west2 (London)' },
 	{ id: 'europe-west3', label: 'europe-west3 (Frankfurt)' },
@@ -1224,38 +1227,44 @@ const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(n
 		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-cron`, { name: 'cron.yaml', content: bodyForNeapUp }, token, options).then(() => res))
 })
 
-const updateQueue = (projectId, queues, token, options={}) => Promise.resolve(null).then(() => {
-	_validateRequiredParams({ projectId, token })
-	_showDebug(`Updating Task queues job for Google Cloud Platform's project ${bold(projectId)}.`, options)
+const updateQueue = (projectId, queues, token, options={}) => getAppDetails(projectId, token, options)
+	.then(({ data: { locationId: projectLocationId } }) => {
+		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
 
-	const bodyForGoogle = queues && queues.length > 0 
-		? yaml.objToYaml({ queue: queues.map(c => {
-			let cj = {
-				name: c.name,
-				target: c.target || 'default',
-				rate: c.rate,
-				bucket_size: c.bucketSize || 5,
-				max_concurrent_requests: c.maxConcurrentRequests || 1000
-			}
-			if (c.retryParameters)
-				cj.retry_parameters = c.retryParameters
-			return cj
-		})})
-		: 'queue:'
+		if (!locationId)
+			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
 
-	const bodyForNeapUp = queues && queues.length > 0 ? yaml.objToYaml({ cron: queues }) : 'queue:' 
+		_validateRequiredParams({ projectId, token })
+		_showDebug(`Updating Task queues job for Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.post(APP_ENG_QUEUE_UPDATE_URL(projectId), {
-		'Content-Type': 'application/octet-stream',
-		'X-appcfg-api-version': '1',
-		'content-length': bodyForGoogle.length,
-		Authorization: `Bearer ${token}`
-	}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
-		.then(res => {
-			return { status: res.status, data: res.data || {} }
-		})
-		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-queue`, { name: 'queue.yaml', content: bodyForNeapUp }, token, options).then(() => res))
-})
+		const bodyForGoogle = queues && queues.length > 0 
+			? yaml.objToYaml({ queue: queues.map(c => {
+				let cj = {
+					name: c.name,
+					target: c.target || 'default',
+					rate: c.rate,
+					bucket_size: c.bucketSize || 5,
+					max_concurrent_requests: c.maxConcurrentRequests || 1000
+				}
+				if (c.retryParameters)
+					cj.retry_parameters = c.retryParameters
+				return cj
+			})})
+			: 'queue:'
+
+		const bodyForNeapUp = queues && queues.length > 0 ? yaml.objToYaml({ cron: queues }) : 'queue:' 
+
+		return fetch.post(APP_ENG_QUEUE_UPDATE_URL(projectId), {
+			'Content-Type': 'application/octet-stream',
+			'X-appcfg-api-version': '1',
+			'content-length': bodyForGoogle.length,
+			Authorization: `Bearer ${token}`
+		}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
+			.then(res => {
+				return { status: res.status, data: res.data || {} }
+			})
+			.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-queue`, { name: 'queue.yaml', content: bodyForNeapUp }, token, options).then(() => res))
+	})
 
 
 ///////////////////////////////////////////////////////////////////
@@ -1293,6 +1302,109 @@ const getBuild = (projectId, buildId, token, options={}) => Promise.resolve(null
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////
 //////											END - BUILD APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											START - CLOUD TASK APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// As of Oct 2018, the Cloud Task API is in beta and only support the following locations:
+// us-east1, us-central1, europe-west1, and asia-northeast1
+const AVAILABLE_TASK_API_REGIONS = {
+	'us-central1': 'us-central1',
+	'us-central': 'us-central1',
+	'us-east1': 'us-east1',
+	'us-east': 'us-east1',
+	'europe-west1': 'europe-west1',
+	'europe-west': 'europe-west1',
+	'asia-northeast1': 'asia-northeast1',
+	'asia-northeast': 'asia-northeast1'
+}
+
+const listTaskQueues = (projectId, token, options={}) => getAppDetails(projectId, token, options)
+	.then(({ data: { locationId: projectLocationId } }) => {
+		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+
+		if (!locationId)
+			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+
+		_validateRequiredParams({ projectId, locationId, token })
+		_showDebug(`Requesting all queues from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+		return fetch.get(TASK_QUEUE_URL(projectId, locationId), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, options)
+			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+	})
+
+// This method is a bit of a pain as it does not provide a rate config as granular as the legacy 'updateQueue' API
+/**
+ * [description]
+ * @param  {[type]} projectId               [description]
+ * @param  {[type]} service                 [description]
+ * @param  {[type]} queue                   [description]
+ * @param  {Number} maxDispatchesPerSecond  Accepts decimal to. For example, 0.1 means that the maximum rate is to process the queue every 10 sec, i.e., 6/m (6 times per minutes) 
+ * @param  {[type]} maxConcurrentDispatches [description]
+ * @param  {[type]} token                   [description]
+ * @param  {Object} options                 [description]
+ * @return {[type]}                         [description]
+ */
+const createTaskQueue = (projectId, service, queue, maxDispatchesPerSecond, maxConcurrentDispatches, token, options={}) => getAppDetails(projectId, token, options)
+	.then(({ data: { locationId: projectLocationId } }) => {
+		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+
+		if (!locationId)
+			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+
+		_validateRequiredParams({ projectId, queue, locationId, token })
+		_showDebug(`Creating a new queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+		return fetch.post(TASK_QUEUE_URL(projectId, locationId), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, JSON.stringify({
+			name: `projects/${projectId}/locations/${locationId}/queues/${queue}`,
+			rateLimits: {
+				maxDispatchesPerSecond: maxDispatchesPerSecond || 500,
+				maxConcurrentDispatches: maxConcurrentDispatches || 1000
+			},
+			appEngineHttpQueue: {
+				appEngineRoutingOverride: {
+					service: service || 'default'
+				}
+			}
+		}), options)
+			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+	})
+
+const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(projectId, token, options)
+	.then(({ data: { locationId: projectLocationId } }) => {
+		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+
+		if (!locationId)
+			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+
+		_validateRequiredParams({ projectId, queue, locationId, token })
+		_showDebug(`Deleting a queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+		return fetch.delete(TASK_QUEUE_URL(projectId, locationId, queue), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, null, options)
+			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+	})
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											END - CLOUD TASK APIS
 //////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1444,7 +1556,12 @@ module.exports = {
 		},
 		queue: {
 			'get': getQueues,
-			update: updateQueue
+			update: updateQueue,
+			beta: {
+				list: listTaskQueues,
+				create: createTaskQueue,
+				delete: deleteTaskQueue
+			}
 		}
 	},
 	serviceAPI: {

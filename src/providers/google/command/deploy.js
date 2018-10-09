@@ -74,6 +74,12 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
 		// .then(({ token, projectId, locationId, service: svcName }) => {
+		// 	return gcp.app.queue.beta.list(projectId, token).then(res =>{
+		// 		console.log(JSON.stringify(res.data, null, ' '))
+		// 		throw new Error('cdccwc')
+		// 	})
+		// })
+		// .then(({ token, projectId, locationId, service: svcName }) => {
 		// 	const cronJobs = []
 		// 	//return gcp.app.cron.get('cron-test-izelv', token, { confirm: true })
 		// 	return gcp.app.cron.update('cron-test-izelv', cronJobs, token, { confirm: true })

@@ -63,8 +63,8 @@ const selectProject = (options={ debug:false, current: null }) => {
 	return getProjects(options).then(projects => {
 		listingProjectDone()
 		const { current } = options || {}
-		const createLabel = `${bold('[ Create new project ]')}`
-		const choices = [...highlightCurrentProjects(projects, current),{ name: createLabel, value: '[create]', short: createLabel }]
+		const createLabel = '[Create new project]'
+		const choices = [...highlightCurrentProjects(projects, current),{ name: createLabel, value: '[create]', short: createLabel, specialOps: true }]
 
 		const firstProject = ((projects || [])[0] || {}).value
 		if (options.skipProjectSelection && firstProject)

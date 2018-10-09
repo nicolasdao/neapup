@@ -171,7 +171,7 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 				throw e
 			})
 	})
-	.then(() => removeStuffs(merge(options, { question: 'What else do you want to do?' })))
+	.then(() => removeStuffs(merge(options, { question: 'What else do you want to delete?' })))
 
 const _chooseId = (q, choices) => askQuestion(question(q))
 	.then(answer => {
