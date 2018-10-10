@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.18"></a>
+## [0.22.18](https://gitlab.com/neap/neap-manager/compare/v0.22.17...v0.22.18) (2018-10-10)
+
+
+### Bug Fixes
+
+* Prevent to enter invalid queue name ([9356661](https://gitlab.com/neap/neap-manager/commit/9356661))
+
+
+### Features
+
+* Add a new option in the ls and a command to manage service accounts as well as generate JSON keys ([1fcec61](https://gitlab.com/neap/neap-manager/commit/1fcec61))
+
+
+
 <a name="0.22.17"></a>
 ## [0.22.17](https://gitlab.com/neap/neap-manager/compare/v0.22.16...v0.22.17) (2018-10-09)
 
