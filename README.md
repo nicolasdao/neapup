@@ -16,6 +16,22 @@ This API is still under dev on the Google side. It's badly documented and the wa
 	- gcp.app.queue.[get, update]: Maintained using `queue.yaml`
 	- gcp.app.queue.beta.[list, create, delete]: Maintained using v2beta3. Those APIs are actually not used at this stage.
 
+## Google Cloud IAM
+### How Service Accounts and Roles Work
+
+In a nutshell, it is a bit fucked. Now that this is out, let's see how the fuck this shit work.
+
+A service account is just like a user, but for an 3rd party system. If you have a system that must interact with your Google Account (e.g., uploading files to a bucket), then you can create a service account for that system. A system account does not have much. It only has a unique name within your project called an __account id__ (it can be anything you want), and a display name. Where things become weirder is when it comes to give this service account access to resources. Those accesses are called policies (IAM policies to be precise). The fucked up thing is that those policies are not managed using the IAM API (you'd freaking think so, as it is advertised as the fucking Swiss army knife of IAM by Google), but by the Resource Manager API. Indeed, the idea is that you're associated policies to a resource, not a service account. Typically, that resource will be the project, so ypu'll use this API to add a policy:
+
+`https://cloudresourcemanager.googleapis.com/v1/projects/your-project-id:setIamPolicy`
+
+For the full documentation, go to [https://cloud.google.com/resource-manager/reference/rest/v1/projects/setIamPolicy](https://cloud.google.com/resource-manager/reference/rest/v1/projects/setIamPolicy).
+
+### Roles
+
+- [List of all predefined roles](https://cloud.google.com/iam/docs/understanding-roles/#predefined_roles)
+
+
 # About Google Cloud App Engine
 ## Task Queues
 ### Creating & Managing Pull Queues

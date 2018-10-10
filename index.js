@@ -82,9 +82,12 @@ program
 	.alias('a')
 	.usage('. This command adds items to your Google Cloud Platform project.')
 	.option('-d, --debug', 'Show debugging messages.')
+	.option('-a, --serviceaccount <projectId> <accountId> <id>', 'Generate a new service key.')
 	.action((opt1, options) => {
 		const { projectPath } = _getParams(opt1)
-		return add({ debug: options.debug, projectPath: projectPath }).then(() => process.exit())
+		const [ projectId, accountId, id ] = options.serviceaccount ? process.argv.slice(-3) : []
+		const serviceAccount = options.serviceaccount ? { projectId, accountId, id } : null
+		return add({ debug: options.debug, projectPath: projectPath, serviceAccount }).then(() => process.exit())
 	})
 
 program

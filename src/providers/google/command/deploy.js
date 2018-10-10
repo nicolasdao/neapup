@@ -74,11 +74,17 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
 		// .then(({ token, projectId, locationId, service: svcName }) => {
-		// 	return gcp.app.queue.beta.list(projectId, token).then(res =>{
+		// 	return gcp.project.iamPolicies.get('cron-task-silit', token).then(res =>{
 		// 		console.log(JSON.stringify(res.data, null, ' '))
 		// 		throw new Error('cdccwc')
 		// 	})
 		// })
+		.then(({ token, projectId, locationId, service: svcName }) => {
+			return gcp.project.serviceAccount.key.generate('cron-task-silit', 'neap-task-ll53oozti@cron-task-silit.iam.gserviceaccount.com', '107474207518467189331', token).then(res =>{
+				console.log(JSON.stringify(res.data, null, ' '))
+				throw new Error('cdccwc')
+			})
+		})
 		// .then(({ token, projectId, locationId, service: svcName }) => {
 		// 	const cronJobs = []
 		// 	//return gcp.app.cron.get('cron-test-izelv', token, { confirm: true })

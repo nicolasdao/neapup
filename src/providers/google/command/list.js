@@ -28,6 +28,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 					{ name: ' 3. Custom Domains', value: 'domains' },
 					{ name: ' 4. Cron Jobs', value: 'cron' },
 					{ name: ' 5. Task Queues', value: 'queue' },
+					{ name: ' 6. Service Accounts', value: 'service-accounts' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -100,6 +101,57 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => listProjectDomains(projectId, token, options))
+					else if (answer == 'service-accounts') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+								return gcp.project.serviceAccount.list(projectId, token, options).then(({ data: svcAccounts }) => {
+									waitDone()
+									const title = `Service Accounts For Project ${projectId}`
+									console.log(`\nService Accounts For Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
+									if (svcAccountsWithRoles.length == 0)
+										console.log('   No Service Accounts found\n')
+									else {
+										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
+											const [ role_01, ...roles ] = a.roles
+											const rCount = roles.length
+											acc.push({
+												'#': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+												id: a.uniqueId,
+												name: a.displayName,
+												accountId: a.email.split('@')[0],
+												roles: role_01
+											})
+											roles.forEach((r, idx) => acc.push({
+												'#': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+												id: '',
+												name: '',
+												accountId: '',
+												roles: r
+											}))
+											return acc
+										}, []), { 
+											indent: '   ', 
+											line: cells => cells[0].trim().match(/^\+/),
+											separator: cells => cells[1].trim() ? '|' : ' ', 
+											format: cell => {
+												const rm = ((cell || '').match(/^\s*(\+|\-)/) || [])[0]
+												if (rm) {
+													const r = rm.replace(/(\-|\+)/, ' ')
+													return cell.replace(rm, r)
+												}
+												else
+													return cell
+											}
+										})
+										console.log(' ')
+									}
+								})
+							})
 					else
 						return _listProjectDetails(activeProjectIds, token, options)
 				})

@@ -16,6 +16,9 @@ const fetch = require('../../utils/fetch')
 const { info, highlight, cmd, link, debugInfo, bold, error } = require('../../utils/console')
 const { promise, identity, collection, obj: objectHelper, yaml } = require('../../utils/index')
 
+const IAM_SERVICE_API = 'iam.googleapis.com'
+const IAM_CREDS_SERVICE_API = 'iamcredentials.googleapis.com'
+
 // OAUTH
 const OAUTH_TOKEN_URL = () => 'https://www.googleapis.com/oauth2/v4/token'
 const GCP_CONSENT_PAGE = query => `https://accounts.google.com/o/oauth2/v2/auth?${query}`
@@ -52,7 +55,8 @@ const BUILD_URL = (projectId, buildId) => `https://cloudbuild.googleapis.com/v1/
 // CLOUD TASK API
 const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://cloudtasks.googleapis.com/v2beta3/projects/${projectId}/locations/${locationId}/queues${queueName ? `/${queueName}${taskName ? `/tasks/${taskName}` : ''}` : ''}`
 // IAM API
-//const SERVICE_ACCOUNT_URL = projectId => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts`
+const SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${serviceEmail}` : ''}`
+const SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail) => `${SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1131,7 +1135,7 @@ const getDomain = (projectId, domain, token, options={}) => Promise.resolve(null
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, options)
-		.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+		.then(res => ({ status: res.status, data: res.data || {} }))
 })
 
 const listDomains = (projectId, token, options={}) => Promise.resolve(null).then(() => {
@@ -1362,7 +1366,7 @@ const listTaskQueues = (projectId, token, options={}) => getAppDetails(projectId
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${token}`
 		}, options)
-			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+			.then(res => ({ status: res.status, data: res.data || {} }))
 	})
 
 // This method is a bit of a pain as it does not provide a rate config as granular as the legacy 'updateQueue' API
@@ -1402,7 +1406,7 @@ const createTaskQueue = (projectId, service, queue, maxDispatchesPerSecond, maxC
 				}
 			}
 		}), options)
-			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+			.then(res => ({ status: res.status, data: res.data || {} }))
 	})
 
 const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(projectId, token, options)
@@ -1419,13 +1423,207 @@ const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(p
 			'Content-Type': 'application/json',
 			Authorization: `Bearer ${token}`
 		}, null, options)
-			.then(res => ({ status: res.status, data: (res.data || {}) || [] }))
+			.then(res => ({ status: res.status, data: res.data || {} }))
 	})
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////
 //////											END - CLOUD TASK APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											START - IAM APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const _enableIamApiIfError = (err, projectId, token, next, options={}) => {
+	try {
+		const er = JSON.parse(err.message)
+		if (er.code == 403 && er.message && er.message.toLowerCase().indexOf('it is disabled. enable it by visiting') >= 0) 
+			return enableServiceAPI(IAM_SERVICE_API, projectId, token, objectHelper.merge(options, { confirm: true }))
+			.then(() => next())
+		else
+			throw err
+	} catch(e) {
+		(() => {
+			throw err
+		})(e)
+	}
+}
+
+const getProjectIAMpolicies = (projectId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all service accounts from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.post(`${PROJECTS_URL(projectId)}:getIamPolicy`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
+const _attachPoliciesToServiceAccounts = (accounts=[], bindings=[]) => {
+	accounts = (accounts || []).map(a => {
+		a.roles = []
+		return a
+	})
+
+	bindings.forEach(({ role, members=[] }) => {
+		const serviceAccountEmails = members.filter(m => m.indexOf('serviceAccount:') == 0).map(m => m.replace('serviceAccount:', ''))
+		if (serviceAccountEmails.length > 0)
+			accounts.filter(a => serviceAccountEmails.some(email => email == a.email)).forEach(a => a.roles.push(role))
+	})
+
+	return accounts
+}
+
+const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all service accounts from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	policy = policy || {}
+	return fetch.get(SERVICE_ACCOUNT_URL(projectId), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, options)
+		.then(res => ({ status: res.status, data: _attachPoliciesToServiceAccounts((res.data || {}).accounts || [], policy.bindings)}))
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => listServiceAccounts(projectId, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+const createServiceAccount = (projectId, name, label, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, name, token })
+	_showDebug(`Creating a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.post(SERVICE_ACCOUNT_URL(projectId), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, JSON.stringify({
+			accountId: (label ? `${label}-${identity.new()}` : `neapup-${identity.new()}`).toLowerCase(),
+			serviceAccount: {
+				displayName: name
+			}
+		}), objectHelper.merge(options, { verbose: false }))
+		.then(res => ({ status: res.status, data: res.data || {} }))
+		.then(res => {
+			if (options.roles && options.roles.length > 0 && res.data.email)
+				return addRolesToServiceAccount(projectId, res.data.email, options.roles, token, options)
+				.then(({ data }) => {
+					res.data.policy = data
+					return res
+				})
+			else
+				return res
+		})
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => createServiceAccount(projectId, name, label, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
+	_validateRequiredParams({ projectId, serviceEmail, roles: roles && roles.length > 0 ? true : null, token })
+	_showDebug(`Add roles to service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const member = `serviceAccount:${serviceEmail}`
+	policy = policy || {}
+	policy.bindings = policy.bindings || []
+	roles.forEach(role => {
+		const existingBinding = policy.bindings.find(x => x.role == role)
+		if (existingBinding && (!existingBinding.members || !existingBinding.members.some(m => m == member))) {
+			existingBinding.members = existingBinding.members || []
+			existingBinding.members.push(member)
+		} else 
+			policy.bindings.push({ role, members: [member] })
+	})
+
+	const body = JSON.stringify({ policy }, null, ' ')
+
+	return fetch.post(`${PROJECTS_URL(projectId)}:setIamPolicy`, {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, body, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
+const deleteServiceAccount = (projectId, serviceEmail, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, serviceEmail, token })
+	_showDebug(`Deleting a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.delete(SERVICE_ACCOUNT_URL(projectId, serviceEmail), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, null, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => deleteServiceAccount(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+const _formatKeyToJsonType = (projectId, serviceEmail, serviceId, key) => {
+	const type = 'service_account'
+	const project_id = projectId
+	const private_key_id = key.name.split('/').slice(-1)[0]
+	const client_email = serviceEmail
+	const client_id = serviceId
+	const auth_uri = 'https://accounts.google.com/o/oauth2/auth'
+	const token_uri = 'https://oauth2.googleapis.com/token'
+	const auth_provider_x509_cert_url = 'https://www.googleapis.com/oauth2/v1/certs'
+	const client_x509_cert_url = `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(client_email)}`
+	return fetch.get('https://www.googleapis.com/robot/v1/metadata/x509/neap-task-ll53oozti%40cron-task-silit.iam.gserviceaccount.com')
+	.then(({ data: publicKeys }) => ({
+		type,
+		project_id,
+		private_key_id,
+		private_key: publicKeys[private_key_id],
+		client_email,
+		client_id,
+		auth_uri,
+		token_uri,
+		auth_provider_x509_cert_url,
+		client_x509_cert_url
+	}))
+}
+
+const generateServiceAccountKey = (projectId, serviceEmail, serviceId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, serviceEmail, serviceId, token })
+	_showDebug(`Generating a new key for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.post(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, JSON.stringify({
+			privateKeyType: 'TYPE_GOOGLE_CREDENTIALS_FILE'
+		}), objectHelper.merge(options, { verbose: false }))
+		.then(res => _formatKeyToJsonType(projectId, serviceEmail, serviceId, res.data)
+			.then(jsonKey => ({ status: res.status, data: jsonKey})))
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => generateServiceAccountKey(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											END - IAM APIS
 //////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1536,6 +1734,17 @@ module.exports = {
 			goToSetupPage: redirectToBillingPage,
 			isEnabled: testBillingEnabled,
 			enable: setUpProjectBilling
+		},
+		serviceAccount: {
+			list: listServiceAccounts,
+			create: createServiceAccount,
+			delete: deleteServiceAccount,
+			key: {
+				generate: generateServiceAccountKey
+			}
+		},
+		iamPolicies: {
+			'get': getProjectIAMpolicies
 		}
 	},
 	bucket: {

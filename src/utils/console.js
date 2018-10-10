@@ -221,10 +221,16 @@ const _getMaxColWidth = (contents=[], options={}) => {
 
 /**
  * [description]
- * @param  {[Object]} rows    			[description]
- * @param  {String} options.indent 		default ''
- * @param  {Boolean} options.hide 		default false
- * @return {[type]}         			[description]
+ * @param  {[Object]} rows    							[description]
+ * @param  {String} options.indent 						default ''
+ * @param  {Boolean} options.hide 						default false
+ * @param  {Boolean|Function} options.line 				If this is a function, it will accept an array representing row elements and 
+ *                                                		returning true or false to determine whether or not the separator line 
+ *                                                		should be displayed. This is usefull for rows containig multiple line element 
+ *                                                		values
+ * @param  {Function} options.separator                 Return the column separator based on the array of row cells                          		
+ * @param  {Function} options.format 					Takes an array of the cells in a row, and reformat each of them                                          
+ * @return {[type]}         							[description]
  */
 const displayTable = (rows, options={}) => {
 	if (!rows || !rows.length)
@@ -243,7 +249,16 @@ const displayTable = (rows, options={}) => {
 	const head = `|${columns.map(x => x.header).join('|')}|`
 	const nonFormattedHead = `|${columns.map(x => x.nonFormattedhHeader).join('|')}|`
 	const line = collection.seed(nonFormattedHead.length).map(() => '=').join('')
-	const stringRows = [ head, line, ...rows.map((row, idx) => `|${columns.map(col => (col.items || [])[idx]).join('|')}|`)]
+	const lineSep = collection.seed(nonFormattedHead.length).map(() => '─').join('')
+	const lineFn = 
+		options.line === true ? (() => true) : 
+		typeof(options.line) == 'function' ? options.line : (() => false)
+	const stringRows = [ head, line, ...rows.map((row, idx) => {
+		const rowcells = columns.map(col => (col.items || [])[idx])
+		const reformattedCells = options.format ? rowcells.map(c => options.format(c)) : rowcells
+		const s = options.separator ? options.separator(rowcells) : '|'
+		return `${s}${reformattedCells.join(s)}${s}${lineFn(rowcells) ? `\n${options.indent || ''}${lineSep}` : ''}`
+	})]
 	if (!options.hide)
 		stringRows.forEach(row => console.log(`${options.indent || ''}${row}`))
 

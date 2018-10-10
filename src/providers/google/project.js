@@ -14,6 +14,7 @@ const path = require('path')
 
 const CLOUD_TASK_SERVICE_API = 'cloudtasks.googleapis.com'
 const FLEX_SERVICE_API = 'appengineflex.googleapis.com'
+const IAM_SERVICE_API = 'iam.googleapis.com'
 
 const getProjects = (options={ debug:false, show:false }) => getToken({ debug: (options || {}).debug }).then(token => {
 	const { debug, show } = options || {}
@@ -158,9 +159,10 @@ const createNewProject = (token, options={ debug:false }) => {
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
 				// 4. Enable Cloud Task API
 				.then(projectId => {
-					waitDone = wait(`Enabling the following APIs: ${bold('Cloud Task API')}, ${bold('App Engine Flexible API')}`)
+					waitDone = wait(`Enabling the following APIs: ${bold('Cloud Task API')}, ${bold('App Engine Flexible API')}, ${bold('IAM API')}`)
 					return gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true }))
 						.then(() => gcp.serviceAPI.enable(FLEX_SERVICE_API, projectId, token, merge(options, { confirm: true })))
+						.then(() => gcp.serviceAPI.enable(IAM_SERVICE_API, projectId, token, merge(options, { confirm: true })))
 						.then(() => projectId)
 				})
 		})

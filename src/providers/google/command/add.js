@@ -29,6 +29,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 2. Routing Rule', value: 'routing' },
 					{ name: ' 3. Cron Job', value: 'cron' },
 					{ name: ' 4. Task Queue', value: 'queue' },
+					{ name: ' 5. Service Account Key', value: 'service-account-key' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -221,6 +222,76 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 											})
 										}
 									})
+							})
+					else if (answer == 'service-account-key') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+								return gcp.project.serviceAccount.list(projectId, token, options).then(({ data: svcAccounts }) => {
+									waitDone()
+									const title = `Service Accounts For Project ${projectId}`
+									console.log(`\nService Accounts For Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
+									if (svcAccountsWithRoles.length == 0)
+										console.log('   No Service Accounts found\n')
+									else {
+										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
+											const [ role_01, ...roles ] = a.roles
+											const rCount = roles.length
+											acc.push({
+												'#': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+												id: a.uniqueId,
+												name: a.displayName,
+												accountId: a.email.split('@')[0],
+												roles: role_01
+											})
+											roles.forEach((r, idx) => acc.push({
+												'#': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+												id: '',
+												name: '',
+												accountId: '',
+												roles: r
+											}))
+											return acc
+										}, []), { 
+											indent: '   ', 
+											line: cells => cells[0].trim().match(/^\+/),
+											separator: cells => cells[1].trim() ? '|' : ' ', 
+											format: cell => {
+												const rm = ((cell || '').match(/^\s*(\+|\-)/) || [])[0]
+												if (rm) {
+													const r = rm.replace(/(\-|\+)/, ' ')
+													return cell.replace(rm, r)
+												}
+												else
+													return cell
+											}
+										})
+										console.log(' ')
+
+										const keyOptions = svcAccountsWithRoles.map((a,idx) => ({
+											name: ` ${bold(idx+1)}. ${bold(a.displayName)}`, value: idx
+										}))
+
+										return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service account: `, choices: keyOptions, separator: false }).then(answer => {
+											if (answer >= 0) {
+												const { uniqueId: serviceId, email: serviceEmail, displayName } = svcAccountsWithRoles[answer*1]
+												waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
+												return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, serviceId, token, options)
+												.then(({ data }) => {
+													waitDone()
+													console.log(success(`JSON Key successfully generated. Safely store the following credentials in a json file.`))
+													console.log(' ')
+													console.log(JSON.stringify(data, null, '  '))
+													console.log(' ')
+												})
+											}
+										})
+									}
+								})
 							})
 					else if (answer == 'routing') 
 						throw new Error('Oops!!! This is not supported yet')
