@@ -163,7 +163,10 @@ const createNewProject = (token, options={ debug:false }) => {
 					return gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true }))
 						.then(() => gcp.serviceAPI.enable(FLEX_SERVICE_API, projectId, token, merge(options, { confirm: true })))
 						.then(() => gcp.serviceAPI.enable(IAM_SERVICE_API, projectId, token, merge(options, { confirm: true })))
-						.then(() => projectId)
+						.then(() => {
+							waitDone()
+							return projectId
+						})
 				})
 		})
 	})

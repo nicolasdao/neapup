@@ -74,7 +74,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 		.then(() => _testEnv(options.projectPath, options))
 		.then(() => utils.project.confirm(options))
 		// .then(({ token, projectId, locationId, service: svcName }) => {
-		// 	return gcp.project.iamPolicies.get('cron-task-silit', token).then(res =>{
+		// 	return gcp.app.get('cron-test2-xnm97', token).then(res =>{
 		// 		console.log(JSON.stringify(res.data, null, ' '))
 		// 		throw new Error('cdccwc')
 		// 	})

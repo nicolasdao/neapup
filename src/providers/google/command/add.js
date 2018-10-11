@@ -10,7 +10,7 @@ const path = require('path')
 const url = require('url')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info, cmd } = require('../../../utils/console')
+const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info, cmd, warn } = require('../../../utils/console')
 const { obj: { merge }, file, collection, timezone } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
@@ -167,19 +167,18 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 												}
 
 												let taskQueueName, rate, target, bucketSize, maxConcurrentRequests
-												// 1. Add Task Queue name
-												return _enterQueueName('Enter a Task Queue name: ', 'The Task Queue name is required')
-													.then(answer => { // 2. Add a target
-														taskQueueName = answer
-														return promptList({ 
-															message: 'Which service should react to enqueued tasks? ', 
-															choices: serviceChoices, 
-															separator: false,
-															noAbort: true
-														})
+												// 1. Add a target
+												return promptList({ 
+													message: 'Which service should react to enqueued tasks? ', 
+													choices: serviceChoices, 
+													separator: false,
+													noAbort: true })
+													.then(answer => { // 2. Name the queue
+														target = answer 
+														return _enterQueueName(`Enter a Task Queue name (default ${bold(target)}): `, 'The task queue name is required.', { default: target })
 													})
 													.then(answer => { // 3. Enter a rate
-														target = answer 
+														taskQueueName = answer
 														const rateUnits = [
 															{ name: 'seconds', value: 's' },
 															{ name: 'minutes', value: 'm' },
@@ -187,7 +186,10 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 															{ name: 'days', value: 'd' }
 														]
 														return promptList({ message: 'Choose a time unit for the frequency at which the Task Queue should be processed: ', choices: rateUnits, separator: false, noAbort: true })
-															.then(u => _chooseNumber(`How many times per ${bold(rateUnits.find(x => x.value == u).name.replace(/s$/, ''))} do you want to process this Task Queue? `, { ge: 0 }).then(n => `${n}/${u}`))
+															.then(u => {
+																const unit = rateUnits.find(x => x.value == u).name.replace(/s$/, '')
+																return _chooseNumber(`How many times per ${bold(unit)} do you want to process this Task Queue (optional, default is 1 per ${unit}) ? `, { ge: 0, default: 1 }).then(n => `${n}/${u}`)
+															})
 													})
 													.then(answer => { // 4. Enter bucket size
 														rate = answer 
@@ -201,26 +203,43 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													})
 													.then(answer => { // 5. Add the new Task Queue
 														maxConcurrentRequests = answer
-														let queue = {
-															name: taskQueueName, 
-															rate, 
-															target, 
-															bucketSize, 
-															maxConcurrentRequests,
-															creationDate: new Date()
-														}
-														const newQueues = queues || []
-														newQueues.push(queue)
-														waitDone = wait('Creating new Task Queue...')
-														return getToken(options)
-															.then(token => gcp.app.queue.update(projectId, newQueues, token, options))
-															.then(() => {
-																waitDone()
-																console.log(success(`New Task Queue successfully created in project ${projectId}`))
-																return token
-															})
+														const overridingExistingQueue = (queues || []).find(({ name }) => name == taskQueueName)
+														const confirm = overridingExistingQueue
+															? (() => {
+																console.log(warn(`You're about to override the existing ${bold(taskQueueName)} task queue`))
+																return askQuestion(question('Are you sure you want to continue (Y/n) ? '))
+															})()
+															: Promise.resolve('yes')
+
+														return confirm.then(yes => {
+															if (yes == 'n')
+																return null
+
+															const updatedQueues = [
+																...(queues || []).filter(({ name }) => name != taskQueueName), {
+																	name: taskQueueName, 
+																	rate, 
+																	target, 
+																	bucketSize, 
+																	maxConcurrentRequests,
+																	creationDate: new Date()
+																}]
+															waitDone = wait('Creating new Task Queue...')
+															return getToken(options)
+																.then(token => gcp.app.queue.update(projectId, updatedQueues, token, options))
+																.then(() => {
+																	waitDone()
+																	console.log(success(`New Task Queue ${bold(taskQueueName)} successfully created in project ${projectId}`))
+																	return token
+																})
+														})
 													})
 													.then(token => { // 6. Checking if we need a new Service Account to push task to Task Queues
+														if (!token) {
+															console.log(' ')
+															return null
+														}
+														
 														waitDone = wait(`Checking service account details for project ${bold(projectId)}...`)
 														return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
 															waitDone()
@@ -346,15 +365,17 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
-const _enterQueueName = () => askQuestion(question('Enter a Task Queue name: ')).then(answer => {
-	if (!answer) {
-		console.log(error('The task queue name is required.'))
-		return _enterQueueName()
+const _enterQueueName = (q, r, options={}) => askQuestion(question(q)).then(answer => {
+	if (!answer && options.default)
+		return options.default
+	else if (!answer) {
+		console.log(error(r))
+		return _enterQueueName(q, r, options)
 	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
 		return answer
 	else {
 		console.log(error('Invalid name. A task queue can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
-		return _enterQueueName()
+		return _enterQueueName(q, r, options)
 	}
 })
 
@@ -482,6 +503,15 @@ const _configureCronSchedule = () => Promise.resolve(null)
 		}
 	})
 
+/**
+ * [description]
+ * @param  {[type]} q       			[description]
+ * @param  {Object} options.default 	[description]
+ * @param  {Array} 	options.range 		[description]
+ * @param  {Number} options.ge 			[description]
+ * @param  {Number} options.gt 			[description]
+ * @return {[type]}         			[description]
+ */
 const _chooseNumber = (q, options={}) => askQuestion(question(q)).then(n => {
 	if (options.default && n !== 0 && !n)
 		return options.default

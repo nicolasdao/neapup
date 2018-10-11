@@ -1642,7 +1642,7 @@ const listServiceAccountKeys = (projectId, serviceEmail, token, options={}) => P
 		})
 })
 
-const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) => Promise.resolve(null).then(() => {
+const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) => getAppDetails(projectId, token, options).then(({ data: { locationId } }) => {
 	_validateRequiredParams({ projectId, serviceEmail, token })
 	_showDebug(`Generating a new key for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
@@ -1652,7 +1652,11 @@ const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) =
 	}, JSON.stringify({
 		privateKeyType: 'TYPE_GOOGLE_CREDENTIALS_FILE'
 	}), objectHelper.merge(options, { verbose: false }))
-		.then(res => ({ status: res.status, data: JSON.parse(Buffer.from(res.data.privateKeyData, 'base64').toString()) }))
+		.then(res => {
+			let jsonKey = JSON.parse(Buffer.from(res.data.privateKeyData, 'base64').toString())
+			jsonKey.location_id = locationId
+			return { status: res.status, data: jsonKey }
+		})
 		.catch(e => {
 			if (!options.skipEnableApi)
 				return _enableIamApiIfError(e, projectId, token, () => generateServiceAccountKey(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
