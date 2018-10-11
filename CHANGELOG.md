@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.23"></a>
+## [0.22.23](https://gitlab.com/neap/neap-manager/compare/v0.22.22...v0.22.23) (2018-10-11)
+
+
+### Features
+
+* Make the Cron job creation clearer ([fe6fa66](https://gitlab.com/neap/neap-manager/commit/fe6fa66))
+
+
+
 <a name="0.22.22"></a>
 ## [0.22.22](https://gitlab.com/neap/neap-manager/compare/v0.22.21...v0.22.22) (2018-10-11)
 
