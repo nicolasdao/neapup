@@ -76,7 +76,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													})), { indent: '   ' })
 													console.log(' ')
 												}
-												let description, pathname, schedule, target, timezone
+												let description, pathname, schedule, target, timezone, serviceUrl
 												// 1. Add a description
 												return askQuestion(question('New Cron job description (optional): ')) 
 													.then(answer => { // 2. Add a target
@@ -90,12 +90,14 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													})
 													.then(answer => { // 3. Add a url
 														target = answer 
-														const serviceUrl = `https://${target == 'default' ? projectId : `${target}-dot-${projectId}`}.appspot.com`
+														serviceUrl = `https://${target == 'default' ? projectId : `${target}-dot-${projectId}`}.appspot.com`
 														console.log(info(`The Cron job uses HTTP GET to fire your service located at ${link(bold(serviceUrl))}`))
 														return askQuestion(question(`Which path should it fire (optional, default is ${bold('/')}) ? `))
 													})
 													.then(answer => { // 4. Choose a timezone
-														pathname = answer ? url.parse(answer).pathname : '/'
+														pathname = answer ? (url.parse(answer).pathname || '/') : '/'
+														if (pathname.indexOf('/') != 0)
+															pathname = `/${pathname}`
 														return _chooseTimeZone()
 													})
 													.then(answer => { // 5. Add a schedule
@@ -114,15 +116,25 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 															}
 															if (timezone)
 																cronJob.timezone = timezone
-															const newCronJobs = cronJobs || []
-															newCronJobs.push(cronJob)
-															waitDone = wait('Adding new Cron job...')
-															return getToken(options)
-																.then(token => gcp.app.cron.update(projectId, newCronJobs, token, options))
-																.then(() => {
-																	waitDone()
-																	console.log(success(`New Cron job successfully added to project ${projectId}`))
-																})
+
+															console.log(info('You\'re about to create the following Cron job:\n'))
+															console.log(info(`  - Description:     ${cronJob.description}`))
+															console.log(info(`  - Firing schedule: ${cronJob.schedule}`))
+															console.log(info(`  - Target:          ${serviceUrl}${pathname}\n`))
+															return askQuestion(question('Are you sure you want to create it (Y/n) ? ')).then(yes => {
+																if (yes == 'n')
+																	return 
+																
+																const newCronJobs = cronJobs || []
+																newCronJobs.push(cronJob)
+																waitDone = wait('Adding new Cron job...')
+																return getToken(options)
+																	.then(token => gcp.app.cron.update(projectId, newCronJobs, token, options))
+																	.then(() => {
+																		waitDone()
+																		console.log(success(`New Cron job successfully added to project ${projectId}`))
+																	})
+															})
 														}
 													})
 											})
