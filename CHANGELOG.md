@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.21"></a>
+## [0.22.21](https://gitlab.com/neap/neap-manager/compare/v0.22.20...v0.22.21) (2018-10-11)
+
+
+### Features
+
+* Improve the task queue creation by auto populating the queue name with the service it targets ([a5fcf17](https://gitlab.com/neap/neap-manager/commit/a5fcf17))
+
+
+
 <a name="0.22.20"></a>
 ## [0.22.20](https://gitlab.com/neap/neap-manager/compare/v0.22.19...v0.22.20) (2018-10-11)
 
