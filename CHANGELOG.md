@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.20"></a>
+## [0.22.20](https://gitlab.com/neap/neap-manager/compare/v0.22.19...v0.22.20) (2018-10-11)
+
+
+### Features
+
+* Auto create a service account that can push tasks to queues after the first queue is created + auto generate the JSON key for that service account ([427303e](https://gitlab.com/neap/neap-manager/commit/427303e))
+
+
+
 <a name="0.22.19"></a>
 ## [0.22.19](https://gitlab.com/neap/neap-manager/compare/v0.22.18...v0.22.19) (2018-10-11)
 
