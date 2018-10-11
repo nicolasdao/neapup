@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.19"></a>
+## [0.22.19](https://gitlab.com/neap/neap-manager/compare/v0.22.18...v0.22.19) (2018-10-11)
+
+
+### Features
+
+* Generating and deleting JSON keys for service account ([fc614ec](https://gitlab.com/neap/neap-manager/commit/fc614ec))
+
+
+
 <a name="0.22.18"></a>
 ## [0.22.18](https://gitlab.com/neap/neap-manager/compare/v0.22.17...v0.22.18) (2018-10-10)
 

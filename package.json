@@ -1,6 +1,6 @@
 {
   "name": "@neap/manager",
-  "version": "0.22.18",
+  "version": "0.22.19",
   "description": "Manage Serverless Web Apps hosted on Google Cloud Platform App Engine and Functions as well as AWS Lambdas.",
   "main": "index.js",
   "contributors": [
