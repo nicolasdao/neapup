@@ -106,7 +106,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => {
 								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-								return gcp.project.serviceAccount.list(projectId, token, options).then(({ data: svcAccounts }) => {
+								return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
 									waitDone()
 									const title = `Service Accounts For Project ${projectId}`
 									console.log(`\nService Accounts For Project ${bold(projectId)}`)
@@ -118,30 +118,31 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 									else {
 										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
 											const [ role_01, ...roles ] = a.roles
-											const rCount = roles.length
+											const [ key_01, ...keys ] = a.keys
+											const rolesAndKeys = collection.merge(roles, keys)
+											const rCount = rolesAndKeys[0].length
 											acc.push({
-												'#': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-												id: a.uniqueId,
+												' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
 												name: a.displayName,
 												accountId: a.email.split('@')[0],
-												roles: role_01
+												roles: role_01.replace('roles/', ''),
+												'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
 											})
-											roles.forEach((r, idx) => acc.push({
-												'#': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-												id: '',
+											rolesAndKeys[0].forEach((r, idx) => acc.push({
+												' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
 												name: '',
 												accountId: '',
-												roles: r
+												roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+												'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
 											}))
 											return acc
 										}, []), { 
 											indent: '   ', 
-											line: cells => cells[0].trim().match(/^\+/),
-											separator: cells => cells[1].trim() ? '|' : ' ', 
+											line: cells => cells[0].trim().match(/^\+/), 
 											format: cell => {
-												const rm = ((cell || '').match(/^\s*(\+|\-)/) || [])[0]
+												const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
 												if (rm) {
-													const r = rm.replace(/(\-|\+)/, ' ')
+													const r = rm.replace(/(-|\+)/, ' ')
 													return cell.replace(rm, r)
 												}
 												else

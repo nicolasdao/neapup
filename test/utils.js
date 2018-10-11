@@ -11,7 +11,7 @@
 
 const { assert } = require('chai')
 const { join } = require('path')
-const { obj, file, yaml } = require('../src/utils')
+const { obj, file, yaml, functional, promise, collection } = require('../src/utils')
 
 describe('utils', () => {
 	describe('obj', () => {
@@ -127,6 +127,121 @@ describe('utils', () => {
 					    schedule: 'every 10 hours'`
 
 				assert.equal(yaml_01.replace(/(\n|\s)/g, ''), result_01.replace(/(\n|\s)/g, ''), '01')
+			})
+		})
+	})
+
+	describe('functional', () => {
+		describe('#arities', () => {
+			it('01 - Should create a function that supports multiple arities.', () => {
+				const fn = functional.arities(
+					'String firstName, Object options={}', 
+					'String firstName, Function getLastName, Object options={}',
+					({ firstName, getLastName, options={} }) => ({ firstName, getLastName, options }))
+
+				const r_01 = fn('Nic', () => 'Dao', { age: 37 })
+				const r_02 = fn('Boris', { age: 31 })
+				const r_03 = fn('Brendan')
+
+				assert.equal(r_01.firstName, 'Nic', '01')
+				assert.equal(r_01.getLastName(), 'Dao','02')
+				assert.equal(r_01.options.age, 37, '03')
+				assert.equal(r_02.firstName, 'Boris', '04')
+				assert.isNotOk(r_02.getLastName, '05')
+				assert.equal(r_02.options.age, 31, '06')
+				assert.equal(r_03.firstName, 'Brendan', '07')
+				assert.isNotOk(r_03.getLastName, '08')
+				assert.isOk(r_03.options, '09')
+				assert.isNotOk(r_03.options.age, '10')
+			})
+
+			it('02 - Should throw an error if none of the rules match one of the arities.', () => {
+				const fn = functional.arities(
+					'String firstName, Object options={}', 
+					'String firstName, Function getLastName, Object options={}',
+					({ firstName, getLastName, options }) => ({ firstName, getLastName, options }))
+				
+				const r_02 = fn('Boris', { age: 31 })
+
+				assert.equal(r_02.firstName, 'Boris', '01')
+				assert.isNotOk(r_02.getLastName, '02')
+				assert.equal(r_02.options.age, 31, '03')
+				assert.throws(() => fn('Nic', 'Dao', { age: 37 }), Error, /.*Invalid arguments exception.*/)
+			})
+		})
+	})
+
+	describe('promise', () => {
+		describe('#retry', () => {
+			it('01 - Should retry functions that return the wrong response.', () => {
+				let counter = 0
+				const fn = () => {
+					counter++
+					if (counter < 3)
+						return 'no good'
+					else
+						return `good after ${counter} attempts`
+				}
+				const successFn = resp => resp != 'no good'
+				return promise.retry(fn, successFn, { retryInterval: 2 }).then(answer => {
+					assert.equal(answer, 'good after 3 attempts', '01')
+				})
+			})
+
+			it('02 - Should retry functions that fail when the \'ignoreFailure\' flag is set to true.', () => {
+				let counter = 0
+				const fn = () => {
+					counter++
+					if (counter < 3)
+						throw new Error('Boom')
+					else
+						return `good after ${counter} attempts`
+				}
+				const successFn = resp => resp != 'no good'
+				return promise.retry(fn, successFn, { retryInterval: 2, ignoreFailure: true }).then(answer => {
+					assert.equal(answer, 'good after 3 attempts', '01')
+				})
+			})
+
+			it('03 - Should retry functions that fail when the \'ignoreFailure\' flag is set to true.', () => {
+				let counter = 0
+				const fn = () => {
+					counter++
+					if (counter < 3)
+						throw new Error('Boom')
+					else
+						return `good after ${counter} attempts`
+				}
+				const successFn = resp => resp != 'no good'
+				return promise.retry(fn, successFn, { retryInterval: 2, ignoreFailure: true }).then(answer => {
+					assert.equal(answer, 'good after 3 attempts', '01')
+				})
+			})
+		})
+	})
+
+	describe('collection', () => {
+		describe('#merge', () => {
+			it('01 - Should merge collections of different sizes.', () => {
+				const res_01 = collection.merge([1,2], [1,2,3,4,5], [10])
+				assert.equal(res_01.length, 3, '01')
+				assert.equal(res_01[0].length, 5, '02')
+				assert.equal(res_01[1].length, 5, '03')
+				assert.equal(res_01[2].length, 5, '04')
+				assert.equal(res_01[0].filter(x => x).join(','), '1,2', '05')
+				assert.equal(res_01[1].filter(x => x).join(','), '1,2,3,4,5', '06')
+				assert.equal(res_01[2].filter(x => x).join(','), '10', '07')
+
+				const res_02 = collection.merge([], [])
+				assert.equal(res_02.length, 2, '08')
+				assert.equal(res_02[0].length, 0, '09')
+				assert.equal(res_02[1].length, 0, '10')
+
+				const res_03 = collection.merge([], [], [1])
+				assert.equal(res_03.length, 3, '11')
+				assert.equal(res_03[0].length, 1, '12')
+				assert.equal(res_03[1].length, 1, '13')
+				assert.equal(res_03[2].length, 1, '14')
 			})
 		})
 	})

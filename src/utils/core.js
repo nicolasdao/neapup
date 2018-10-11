@@ -158,6 +158,29 @@ const arrayObjAreDiff = (objArr_01, objArr_02) => {
 	return objArr_01.some(h1 => !objArr_02.some(h2 => objAreSame(h1, h2)))
 }
 
+const mergeCollection = (...collections) => {
+	if (collections.length == 0)
+		return []
+
+	const lengths = collections.filter(col => col && col.length).map(col => col.length)
+	if (lengths.length == 0)
+		return collections
+	
+	const maxLength = Math.max(...collections.filter(col => col && col.length).map(col => col.length))
+
+	return collections.map(col => {
+		const l = (col || []).length
+		if (l == 0) {
+			return newSeed(maxLength)
+		}
+		if (l == maxLength)
+			return col 
+
+		const diff = maxLength - l
+		return [...col, ...newSeed(diff)]
+	})
+}
+
 module.exports = {
 	identity: {
 		'new': newId
@@ -167,7 +190,8 @@ module.exports = {
 	},
 	collection: {
 		sortBy,
-		seed: newSeed
+		seed: newSeed,
+		merge: mergeCollection
 	},
 	obj: {
 		merge: mergeObj,

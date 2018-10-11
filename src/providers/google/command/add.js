@@ -10,7 +10,7 @@ const path = require('path')
 const url = require('url')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info } = require('../../../utils/console')
+const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info, cmd } = require('../../../utils/console')
 const { obj: { merge }, file, collection, timezone } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
@@ -228,7 +228,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
 							.then(({ projectId, token }) => {
 								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-								return gcp.project.serviceAccount.list(projectId, token, options).then(({ data: svcAccounts }) => {
+								return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
 									waitDone()
 									const title = `Service Accounts For Project ${projectId}`
 									console.log(`\nService Accounts For Project ${bold(projectId)}`)
@@ -240,30 +240,31 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									else {
 										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
 											const [ role_01, ...roles ] = a.roles
-											const rCount = roles.length
+											const [ key_01, ...keys ] = a.keys
+											const rolesAndKeys = collection.merge(roles, keys)
+											const rCount = rolesAndKeys[0].length
 											acc.push({
-												'#': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-												id: a.uniqueId,
+												' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
 												name: a.displayName,
 												accountId: a.email.split('@')[0],
-												roles: role_01
+												roles: role_01.replace('roles/', ''),
+												'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
 											})
-											roles.forEach((r, idx) => acc.push({
-												'#': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-												id: '',
+											rolesAndKeys[0].forEach((r, idx) => acc.push({
+												' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
 												name: '',
 												accountId: '',
-												roles: r
+												roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+												'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
 											}))
 											return acc
 										}, []), { 
 											indent: '   ', 
-											line: cells => cells[0].trim().match(/^\+/),
-											separator: cells => cells[1].trim() ? '|' : ' ', 
+											line: cells => cells[0].trim().match(/^\+/), 
 											format: cell => {
-												const rm = ((cell || '').match(/^\s*(\+|\-)/) || [])[0]
+												const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
 												if (rm) {
-													const r = rm.replace(/(\-|\+)/, ' ')
+													const r = rm.replace(/(-|\+)/, ' ')
 													return cell.replace(rm, r)
 												}
 												else
@@ -273,21 +274,31 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 										console.log(' ')
 
 										const keyOptions = svcAccountsWithRoles.map((a,idx) => ({
-											name: ` ${bold(idx+1)}. ${bold(a.displayName)}`, value: idx
+											name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
 										}))
 
 										return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service account: `, choices: keyOptions, separator: false }).then(answer => {
 											if (answer >= 0) {
-												const { uniqueId: serviceId, email: serviceEmail, displayName } = svcAccountsWithRoles[answer*1]
+												const { email: serviceEmail, displayName } = svcAccountsWithRoles[answer*1]
 												waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
-												return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, serviceId, token, options)
-												.then(({ data }) => {
-													waitDone()
-													console.log(success(`JSON Key successfully generated. Safely store the following credentials in a json file.`))
-													console.log(' ')
-													console.log(JSON.stringify(data, null, '  '))
-													console.log(' ')
-												})
+												return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
+													.then(({ data }) => {
+														waitDone()
+														console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
+														console.log(' ')
+														console.log(JSON.stringify(data, null, '  '))
+														console.log(' ')
+													})
+													.catch(e => {
+														waitDone()
+														const er = JSON.parse(e.message)
+														if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
+															console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
+															console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
+															console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
+														} else 
+															throw e
+													})
 											}
 										})
 									}

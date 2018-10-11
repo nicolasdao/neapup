@@ -17,7 +17,6 @@ const { info, highlight, cmd, link, debugInfo, bold, error } = require('../../ut
 const { promise, identity, collection, obj: objectHelper, yaml } = require('../../utils/index')
 
 const IAM_SERVICE_API = 'iam.googleapis.com'
-const IAM_CREDS_SERVICE_API = 'iamcredentials.googleapis.com'
 
 // OAUTH
 const OAUTH_TOKEN_URL = () => 'https://www.googleapis.com/oauth2/v4/token'
@@ -55,8 +54,8 @@ const BUILD_URL = (projectId, buildId) => `https://cloudbuild.googleapis.com/v1/
 // CLOUD TASK API
 const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://cloudtasks.googleapis.com/v2beta3/projects/${projectId}/locations/${locationId}/queues${queueName ? `/${queueName}${taskName ? `/tasks/${taskName}` : ''}` : ''}`
 // IAM API
-const SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${serviceEmail}` : ''}`
-const SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail) => `${SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys`
+const SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${encodeURIComponent(serviceEmail)}` : ''}`
+const SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys${keyId ? `/${keyId}` : ''}`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1447,7 +1446,7 @@ const _enableIamApiIfError = (err, projectId, token, next, options={}) => {
 		const er = JSON.parse(err.message)
 		if (er.code == 403 && er.message && er.message.toLowerCase().indexOf('it is disabled. enable it by visiting') >= 0) 
 			return enableServiceAPI(IAM_SERVICE_API, projectId, token, objectHelper.merge(options, { confirm: true }))
-			.then(() => next())
+				.then(() => next())
 		else
 			throw err
 	} catch(e) {
@@ -1489,10 +1488,41 @@ const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolic
 
 	policy = policy || {}
 	return fetch.get(SERVICE_ACCOUNT_URL(projectId), {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		}, options)
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
 		.then(res => ({ status: res.status, data: _attachPoliciesToServiceAccounts((res.data || {}).accounts || [], policy.bindings)}))
+		.then(res => {
+			if (options.includeKeys) {
+				const svcAccountsWithRoles = (res.data || []).filter(a => a.roles && a.roles.length > 0)
+				if (svcAccountsWithRoles.length > 0)
+					return Promise.all(svcAccountsWithRoles.map(a => listServiceAccountKeys(projectId, a.email, token, options)))
+						.then(values => {
+							values.forEach(({ data: keys }) => {
+								if (keys && keys.length > 0) 
+									keys.forEach(({ name, validAfterTime: created }) => {
+										const keyId = name.split('/').slice(-1)[0]
+										const serviceAccountEmail = name.replace(`/keys/${keyId}`, '').split('/').slice(-1)[0]
+										res.data.filter(a => a.email == serviceAccountEmail).forEach(a => {
+											a.keys = a.keys || []
+											a.keys.push({ id: keyId, created })
+										})
+									})
+							})
+							res.data.forEach(a => {
+								if (!a.keys)
+									a.keys = []
+								a.keys = collection.sortBy(a.keys, x => x.created, 'des')
+							})
+							return res
+						})
+				else {
+					res.data.forEach(a => a.keys = [])
+					return res
+				}
+			} else 
+				return res
+		})
 		.catch(e => {
 			if (!options.skipEnableApi)
 				return _enableIamApiIfError(e, projectId, token, () => listServiceAccounts(projectId, token, objectHelper.merge(options, { skipEnableApi: true })), options)
@@ -1506,22 +1536,22 @@ const createServiceAccount = (projectId, name, label, token, options={}) => Prom
 	_showDebug(`Creating a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.post(SERVICE_ACCOUNT_URL(projectId), {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		}, JSON.stringify({
-			accountId: (label ? `${label}-${identity.new()}` : `neapup-${identity.new()}`).toLowerCase(),
-			serviceAccount: {
-				displayName: name
-			}
-		}), objectHelper.merge(options, { verbose: false }))
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify({
+		accountId: (label ? `${label}-${identity.new()}` : `neapup-${identity.new()}`).toLowerCase(),
+		serviceAccount: {
+			displayName: name
+		}
+	}), objectHelper.merge(options, { verbose: false }))
 		.then(res => ({ status: res.status, data: res.data || {} }))
 		.then(res => {
 			if (options.roles && options.roles.length > 0 && res.data.email)
 				return addRolesToServiceAccount(projectId, res.data.email, options.roles, token, options)
-				.then(({ data }) => {
-					res.data.policy = data
-					return res
-				})
+					.then(({ data }) => {
+						res.data.policy = data
+						return res
+					})
 			else
 				return res
 		})
@@ -1552,9 +1582,9 @@ const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options
 	const body = JSON.stringify({ policy }, null, ' ')
 
 	return fetch.post(`${PROJECTS_URL(projectId)}:setIamPolicy`, {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		}, body, options)
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, body, options)
 		.then(res => ({ status: res.status, data: res.data || {} }))
 })
 
@@ -1563,9 +1593,9 @@ const deleteServiceAccount = (projectId, serviceEmail, token, options={}) => Pro
 	_showDebug(`Deleting a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.delete(SERVICE_ACCOUNT_URL(projectId, serviceEmail), {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		}, null, options)
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, options)
 		.then(res => ({ status: res.status, data: res.data || {} }))
 		.catch(e => {
 			if (!options.skipEnableApi)
@@ -1575,46 +1605,56 @@ const deleteServiceAccount = (projectId, serviceEmail, token, options={}) => Pro
 		})
 })
 
-const _formatKeyToJsonType = (projectId, serviceEmail, serviceId, key) => {
-	const type = 'service_account'
-	const project_id = projectId
-	const private_key_id = key.name.split('/').slice(-1)[0]
-	const client_email = serviceEmail
-	const client_id = serviceId
-	const auth_uri = 'https://accounts.google.com/o/oauth2/auth'
-	const token_uri = 'https://oauth2.googleapis.com/token'
-	const auth_provider_x509_cert_url = 'https://www.googleapis.com/oauth2/v1/certs'
-	const client_x509_cert_url = `https://www.googleapis.com/robot/v1/metadata/x509/${encodeURIComponent(client_email)}`
-	return fetch.get('https://www.googleapis.com/robot/v1/metadata/x509/neap-task-ll53oozti%40cron-task-silit.iam.gserviceaccount.com')
-	.then(({ data: publicKeys }) => ({
-		type,
-		project_id,
-		private_key_id,
-		private_key: publicKeys[private_key_id],
-		client_email,
-		client_id,
-		auth_uri,
-		token_uri,
-		auth_provider_x509_cert_url,
-		client_x509_cert_url
-	}))
-}
+const listServiceAccountKeys = (projectId, serviceEmail, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, serviceEmail, token })
+	_showDebug(`Listing all keys for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-const generateServiceAccountKey = (projectId, serviceEmail, serviceId, token, options={}) => Promise.resolve(null).then(() => {
-	_validateRequiredParams({ projectId, serviceEmail, serviceId, token })
+	return fetch.get(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, objectHelper.merge(options, { verbose: false }))
+		.then(res => ({ status: res.status, data: (res.data || {}).keys }))
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => listServiceAccountKeys(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, serviceEmail, token })
 	_showDebug(`Generating a new key for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	return fetch.post(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		}, JSON.stringify({
-			privateKeyType: 'TYPE_GOOGLE_CREDENTIALS_FILE'
-		}), objectHelper.merge(options, { verbose: false }))
-		.then(res => _formatKeyToJsonType(projectId, serviceEmail, serviceId, res.data)
-			.then(jsonKey => ({ status: res.status, data: jsonKey})))
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify({
+		privateKeyType: 'TYPE_GOOGLE_CREDENTIALS_FILE'
+	}), objectHelper.merge(options, { verbose: false }))
+		.then(res => ({ status: res.status, data: JSON.parse(Buffer.from(res.data.privateKeyData, 'base64').toString()) }))
 		.catch(e => {
 			if (!options.skipEnableApi)
 				return _enableIamApiIfError(e, projectId, token, () => generateServiceAccountKey(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
+			else 
+				throw e
+		})
+})
+
+const deleteServiceAccountKey = (projectId, serviceEmail, keyId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, serviceEmail, keyId, token })
+	_showDebug(`Deleting a service account key in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	console.log(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail, keyId))
+
+	return fetch.delete(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail, keyId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, objectHelper.merge(options, { verbose: false }))
+		.then(res => ({ status: res.status, data: res.data || {} }))
+		.catch(e => {
+			if (!options.skipEnableApi)
+				return _enableIamApiIfError(e, projectId, token, () => deleteServiceAccountKey(projectId, serviceEmail, token, objectHelper.merge(options, { skipEnableApi: true })), options)
 			else 
 				throw e
 		})
@@ -1740,7 +1780,8 @@ module.exports = {
 			create: createServiceAccount,
 			delete: deleteServiceAccount,
 			key: {
-				generate: generateServiceAccountKey
+				generate: generateServiceAccountKey,
+				delete: deleteServiceAccountKey
 			}
 		},
 		iamPolicies: {

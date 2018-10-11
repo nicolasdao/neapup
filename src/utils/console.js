@@ -252,7 +252,7 @@ const displayTable = (rows, options={}) => {
 	const lineSep = collection.seed(nonFormattedHead.length).map(() => '─').join('')
 	const lineFn = 
 		options.line === true ? (() => true) : 
-		typeof(options.line) == 'function' ? options.line : (() => false)
+			typeof(options.line) == 'function' ? options.line : (() => false)
 	const stringRows = [ head, line, ...rows.map((row, idx) => {
 		const rowcells = columns.map(col => (col.items || [])[idx])
 		const reformattedCells = options.format ? rowcells.map(c => options.format(c)) : rowcells
