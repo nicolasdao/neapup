@@ -189,13 +189,19 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 				// 4. Upload zip to bucket
 				//////////////////////////////
 				.then(() => {
-					const zipSize = (zip.file.length/1024/1024).toFixed(2)
+					const s = zip.file.length
+					let unit = 'MB'
+					let zipSize = (s/1024/1024).toFixed(2)
+					if (zipSize * 1 < 1) {
+						zipSize = (s/1024).toFixed(2)
+						unit = 'KB'
+					}
 					const uploadStart = Date.now()
-					waitDone = wait(`Uploading nodejs app (${zipSize}MB) to bucket`)
+					waitDone = wait(`Uploading nodejs app (${zipSize}${unit}) to bucket`)
 					return gcp.bucket.uploadFile(bucket.projectId, bucket.name, { name: zip.name, content: zip.file }, token, options)
 						.then(() => {
 							waitDone()
-							console.log(success(`App (${zipSize}MB) successfully uploaded to bucket in ${((Date.now() - uploadStart)/1000).toFixed(2)} seconds.`))
+							console.log(success(`App (${zipSize}${unit}) successfully uploaded to bucket in ${((Date.now() - uploadStart)/1000).toFixed(2)} seconds.`))
 						})
 						.catch(e => { waitDone(); throw e })
 				})	
