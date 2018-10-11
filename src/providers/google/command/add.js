@@ -199,7 +199,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 														bucketSize = answer
 														return _chooseNumber('What\'s the maximum number of concurrent services that can process the Task Queue (optional, default is 1000) ? ', { ge: 1, default: 1000 })
 													})
-													.then(answer => { // 5. Add the Cron
+													.then(answer => { // 5. Add the new Task Queue
 														maxConcurrentRequests = answer
 														let queue = {
 															name: taskQueueName, 
@@ -217,7 +217,34 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 															.then(() => {
 																waitDone()
 																console.log(success(`New Task Queue successfully created in project ${projectId}`))
+																return token
 															})
+													})
+													.then(token => { // 6. Checking if we need a new Service Account to push task to Task Queues
+														waitDone = wait(`Checking service account details for project ${bold(projectId)}...`)
+														return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+															waitDone()
+															const svcAccountsWithTaskQueueRoles = (svcAccounts || []).filter(a => a.roles && a.roles.some(r => r == 'roles/appengine.appViewer') && a.roles.some(r => r == 'roles/cloudtasks.enqueuer') && a.keys.length > 0)
+															if (svcAccountsWithTaskQueueRoles.length == 0) {
+																waitDone = wait('Creating a new service account to allow clients to push tasks to this new queue...')
+																return gcp.project.serviceAccount.create(
+																	projectId, 
+																	taskQueueName, 
+																	'neapup-task-queue', 
+																	token, 
+																	merge(options, { roles: ['roles/appengine.appViewer', 'roles/cloudtasks.enqueuer'], createJsonKey: true }))
+																	.then(({ data }) => {
+																		waitDone()
+																		console.log(success(`New service account successfully created in project ${bold(projectId)}`))
+																		console.log(info('This service account allows 3rd party systems to push tasks to the newly created queue'))
+																		console.log(info(`To push new tasks to the queue, 3rd parties must use the following ${bold('JSON key')} to acquire an OAuth2 token\n`))
+																		console.log(`  ${bold('COPY THIS JSON KEY INTO A .json FILE')}`)
+																		console.log('  ====================================\n')
+																		console.log(JSON.stringify(data.jsonKey, null, '  '))
+																		console.log(' ')
+																	})
+															}
+														})
 													})
 											})
 										}

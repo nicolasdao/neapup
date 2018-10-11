@@ -1531,6 +1531,17 @@ const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolic
 		})
 })
 
+/**
+ * [description]
+ * @param  {[type]}   projectId                     [description]
+ * @param  {[type]}   name                          [description]
+ * @param  {[type]}   label                         [description]
+ * @param  {[type]}   token                         [description]
+ * @param  {Object}   options.roles                [description]
+ * @param  {Object}   options.createJsonKey        [description]
+ * @param  {Object}   options.skipEnableApi        [description]
+* @return {[type]}                                 [description]
+ */
 const createServiceAccount = (projectId, name, label, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, name, token })
 	_showDebug(`Creating a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
@@ -1554,6 +1565,15 @@ const createServiceAccount = (projectId, name, label, token, options={}) => Prom
 					})
 			else
 				return res
+		})
+		.then(res => {
+			if (options.createJsonKey) {
+				return generateServiceAccountKey(projectId, res.data.email, token, options).then(({ data }) => {
+					res.data.jsonKey = data 
+					return res
+				})
+			} else
+				return res 
 		})
 		.catch(e => {
 			if (!options.skipEnableApi)
