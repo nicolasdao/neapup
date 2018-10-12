@@ -30,6 +30,7 @@
     "lint": "eslint index.js src/ test/ --fix",
     "push": "git push --follow-tags origin master",
     "rls": "standard-version --release-as",
+    "setup": "npm run insta",
     "start": "node index.js",
     "test": "mocha",
     "v": "node version.js"
