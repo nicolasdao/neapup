@@ -124,11 +124,21 @@ const enterProjectName = () => askQuestion(question('Enter a project name: ')).t
 	} else if (projectName.replace(/\s/g,'').length < 5) {
 		console.log(info('The project name must contain at least 5 characters excluding spaces.'))
 		return enterProjectName()
+	} else if (projectName.trim().toLowerCase().match(/^demo(\s|-)/)) {
+		console.log(info('The project name cannot start with \'demo \' or \'demo-\'.'))
+		return enterProjectName()
 	} else 
 		return projectName
 })
 
-const createNewProject = (token, options={ debug:false }) => {
+/**
+ * [description]
+ * @param  {[type]} token   					[description]
+ * @param  {Boolean} options.noExit 			[description]
+ * @param  {Boolean} options.createAppEngine 	[description]
+ * @return {[type]}         					[description]
+ */
+const createNewProject = (token, options={}) => {
 	if (!token) {
 		console.log(error('Missing required OAuth \'token\'.'))
 		throw new Error('Missing required OAuth \'token\'.')
@@ -145,15 +155,11 @@ const createNewProject = (token, options={ debug:false }) => {
 
 			// 2. Create project
 			let waitDone = wait(`Creating project ${bold(projectName)} (id: ${bold(projectId)}). This should take a few seconds.\n  If it takes too long, check the status on your account: ${link('https://console.cloud.google.com/cloud-resource-manager?organizationId=0')}`)
-			return gcp.project.create(projectName, projectId, token, merge(options, { confirm: true }))
+			return gcp.project.create(projectName, projectId, token, merge(options, { confirm: true, verbose: false }))
 				.then(() => {
 					waitDone()
 					console.log(success('Project successfully created'))
 					return projectId
-				})
-				.catch(e => {
-					waitDone()
-					throw e
 				})
 				// 3. Enable billing
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
@@ -167,6 +173,60 @@ const createNewProject = (token, options={ debug:false }) => {
 							waitDone()
 							return projectId
 						})
+				})
+				.then(projectId => {
+					if (!options.createAppEngine)
+						return projectId
+
+					return gcp.app.getRegions().then(regions => {
+						const choices = regions.map(({ id, label }, idx) => ({
+							name: ` ${idx+1}. ${label}`,
+							value: id,
+							short: id				
+						}))
+						return promptList({ message: 'Select a region (WARNING: This cannot be undone!):', choices, separator: false})
+					})
+						.then(answer => {
+							if (!answer) 
+								return projectId
+
+							const appEngDone = wait(`Creating a new App Engine (region: ${bold(answer)}) in project ${bold(projectId)}`)
+							return gcp.app.create(projectId, answer, token, options)
+								.then(({ data: { operationId } }) => promise.check(
+									() => gcp.app.getOperationStatus(projectId, operationId, token, options).catch(e => {
+										console.log(error(`Unable to verify deployment status. Manually check the status of your build here: ${link(`https://console.cloud.google.com/cloud-build/builds?project=${projectId}`)}`))
+										throw e
+									}), 
+									({ data }) => {
+										if (data && data.done) {
+											appEngDone()
+											return true
+										}
+										else if (data && data.message) {
+											console.log(error('Fail to create App Engine. Details:', JSON.stringify(data, null, '  ')))
+											process.exit()
+										} else 
+											return false
+									})
+								)
+								.catch(e => {
+									console.log(error('Fail to create App Engine.', e.message, e.stack))
+									throw e
+								})
+								.then(() => {
+									console.log(success(`App Engine (region: ${bold(answer)}) successfully created in project ${bold(projectId)}.`))
+									return projectId
+								})
+						})
+				})
+				.catch(e => {
+					waitDone()
+					const er = JSON.parse(e.message)
+					if (er.code == 400 && er.message && er.message.toLowerCase().indexOf('project_id contains invalid components') >= 0) {
+						console.log(error('This project name is already taken. Please try another one'))
+						return getToken(options).then(token => createNewProject(token, options))
+					} else 
+						throw e
 				})
 		})
 	})

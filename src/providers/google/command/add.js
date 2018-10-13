@@ -10,7 +10,10 @@ const path = require('path')
 const url = require('url')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, link, askQuestion, question, success, displayTable, searchAnswer, info, cmd, warn } = require('../../../utils/console')
+const { 
+	bold, wait, error, promptList, link, askQuestion, 
+	question, success, displayTable, searchAnswer, 
+	info, cmd, warn, displayList } = require('../../../utils/console')
 const { obj: { merge }, file, collection, timezone } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
@@ -25,11 +28,12 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. Custom Domain', value: 'domain' },
-					{ name: ' 2. Routing Rule', value: 'routing' },
-					{ name: ' 3. Cron Job', value: 'cron' },
-					{ name: ' 4. Task Queue', value: 'queue' },
-					{ name: ' 5. Service Account Key', value: 'service-account-key' },
+					{ name: ' 1. Project', value: 'project' },
+					{ name: ' 2. Custom Domain', value: 'domain' },
+					{ name: ' 3. Routing Rule', value: 'routing' },
+					{ name: ' 4. Cron Job', value: 'cron' },
+					{ name: ' 5. Task Queue', value: 'queue' },
+					{ name: ' 6. Service Account Key', value: 'service-account-key' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -38,8 +42,12 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 				return promptList({ message: (options.question || 'What do you want to add?'), choices: topLevelChoices, separator: false }).then(answer => {
 					if (!answer)
 						process.exit()
-					if (answer == 'domain') 
-						throw new Error('Oops!!! This is not supported yet')
+					if (answer == 'domain') {
+						console.log(error('Oops!!! This is not supported yet'))
+						return 
+					} 
+					else if (answer == 'project')
+						return projectHelper.create(token, merge(options, { createAppEngine: true, noExit: true }))
 					else if (answer == 'cron') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
@@ -118,9 +126,13 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 																cronJob.timezone = timezone
 
 															console.log(info('You\'re about to create the following Cron job:\n'))
-															console.log(info(`  - Description:     ${cronJob.description}`))
-															console.log(info(`  - Firing schedule: ${cronJob.schedule}`))
-															console.log(info(`  - Target:          ${serviceUrl}${pathname}\n`))
+															displayList([
+																{ name: 'Description', value: cronJob.description },
+																{ name: 'Firing schedule', value: `${cronJob.schedule}${timezone ? ` (${timezone})` : ' (UTC/GMT)'}` },
+																{ name: 'Fired service', value: `${serviceUrl}${pathname}` }
+															], { indent: '  ' })
+															console.log(' ')
+
 															return askQuestion(question('Are you sure you want to create it (Y/n) ? ')).then(yes => {
 																if (yes == 'n')
 																	return 
@@ -178,42 +190,43 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													console.log(' ')
 												}
 
-												let taskQueueName, rate, target, bucketSize, maxConcurrentRequests
+												let taskQueueName, rate, target, bucketSize, maxConcurrentRequests, timeUnit
 												// 1. Add a target
 												return promptList({ 
-													message: 'Which service should react to enqueued tasks? ', 
+													message: 'Which service should process each enqueued task? ', 
 													choices: serviceChoices, 
 													separator: false,
 													noAbort: true })
 													.then(answer => { // 2. Name the queue
 														target = answer 
-														return _enterQueueName(`Enter a Task Queue name (default ${bold(target)}): `, 'The task queue name is required.', { default: target })
+														const defaultName = target.toLowerCase()
+														return _enterQueueName(`Enter a queue name (default ${bold(defaultName)}): `, 'The queue name is required.', { default: defaultName })
 													})
-													.then(answer => { // 3. Enter a rate
+													.then(answer => { // 3. Enter a rate unit
 														taskQueueName = answer
 														const rateUnits = [
-															{ name: 'seconds', value: 's' },
-															{ name: 'minutes', value: 'm' },
-															{ name: 'hours', value: 'h' },
-															{ name: 'days', value: 'd' }
+															{ name: 'milliseconds', value: 'milliseconds' },
+															{ name: 'seconds', value: 'seconds' },
+															{ name: 'minutes', value: 'minutes' },
+															{ name: 'hours', value: 'hours' },
+															{ name: 'days', value: 'days' }
 														]
-														return promptList({ message: 'Choose a time unit for the frequency at which the Task Queue should be processed: ', choices: rateUnits, separator: false, noAbort: true })
-															.then(u => {
-																const unit = rateUnits.find(x => x.value == u).name.replace(/s$/, '')
-																return _chooseNumber(`How many times per ${bold(unit)} do you want to process this Task Queue (optional, default is 1 per ${unit}) ? `, { ge: 0, default: 1 }).then(n => `${n}/${u}`)
-															})
+														return promptList({ message: `Choose a time unit for the frequency at which the queue pushes tasks to the ${target} service: `, choices: rateUnits, separator: false, noAbort: true })
+													})
+													.then(answer => { // 4. Enter a rate number
+														timeUnit = answer
+														const example = timeUnit == 'milliseconds' ? 200 : 2
+														return _chooseNumber(`How often does the queue push tasks to the ${target} service? (ex: Enter ${bold(example)} for ${bold(`every ${example} ${timeUnit}`)}) : `, { ge: 1 })
 													})
 													.then(answer => { // 4. Enter bucket size
 														rate = answer 
-														const [ freq, unit ] = rate.split('/')
-														const u = { 's': 'seconds', 'm': 'minutes', 'h': 'hours', 'd': 'days' }
-														return _chooseNumber(`How many items inside the Task Queue should be processed at once every ${bold(freq)} ${bold(u[unit])} (optional, default is 5) ? `, { ge: 1, default: 5 })
+														return _chooseNumber(`How many tasks does the queue push to the ${target} service every ${bold(rate)} ${bold(timeUnit)} (optional, default is 5, max. is 500) ? `, { range: [1,500], default: 5 })
 													})
-													.then(answer => { // 4. Enter the max concurrent request
+													.then(answer => { // 5. Enter the max concurrent request
 														bucketSize = answer
-														return _chooseNumber('What\'s the maximum number of concurrent services that can process the Task Queue (optional, default is 1000) ? ', { ge: 1, default: 1000 })
+														return _chooseNumber(`What's the max. number of concurrent tasks that can be pushed to the ${target} service (optional, default is 1000, max. is 5000) ? `, { range: [1,5000], default: 1000 })
 													})
-													.then(answer => { // 5. Add the new Task Queue
+													.then(answer => { // 6. Add the new Task Queue
 														maxConcurrentRequests = answer
 														const overridingExistingQueue = (queues || []).find(({ name }) => name == taskQueueName)
 														const confirm = overridingExistingQueue
@@ -227,23 +240,42 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 															if (yes == 'n')
 																return null
 
-															const updatedQueues = [
-																...(queues || []).filter(({ name }) => name != taskQueueName), {
-																	name: taskQueueName, 
-																	rate, 
-																	target, 
-																	bucketSize, 
-																	maxConcurrentRequests,
-																	creationDate: new Date()
-																}]
-															waitDone = wait('Creating new Task Queue...')
-															return getToken(options)
-																.then(token => gcp.app.queue.update(projectId, updatedQueues, token, options))
-																.then(() => {
-																	waitDone()
-																	console.log(success(`New Task Queue ${bold(taskQueueName)} successfully created in project ${projectId}`))
-																	return token
-																})
+															const newQueue = {
+																name: taskQueueName, 
+																rate: _formatTaskRateForGoogle(rate, timeUnit),
+																formattedRate: `every ${rate} ${timeUnit}`, 
+																target, 
+																bucketSize, 
+																maxConcurrentRequests,
+																creationDate: new Date()
+															}
+
+															console.log(info('You\'re about to create the following Queue:\n'))
+															displayList([
+																{ name: 'Name', value: newQueue.name },
+																{ name: 'Processing service', value: newQueue.target },
+																{ name: 'Processing frequency', value: newQueue.formattedRate },
+																{ name: ['Max nbr. of tasks processed', `at once ${newQueue.formattedRate}`], value: newQueue.bucketSize },
+																{ name: ['Max nbr. of concurrent', 'tasks requests'], value: newQueue.maxConcurrentRequests },
+															], { indent: '  ' })
+															console.log(' ')
+
+															return askQuestion(question('Are you sure you want to create it (Y/n) ? ')).then(yes => {
+																if (yes == 'n')
+																	return 
+																
+																const updatedQueues = [
+																	...(queues || []).filter(({ name }) => name != taskQueueName), 
+																	newQueue]
+																waitDone = wait('Creating new Task Queue...')
+																return getToken(options)
+																	.then(token => gcp.app.queue.update(projectId, updatedQueues, token, options))
+																	.then(() => {
+																		waitDone()
+																		console.log(success(`New Task Queue ${bold(taskQueueName)} successfully created in project ${projectId}`))
+																		return token
+																	})
+															})
 														})
 													})
 													.then(token => { // 6. Checking if we need a new Service Account to push task to Task Queues
@@ -702,6 +734,87 @@ const _chooseTimeZone = () => {
 		})
 }
 
+/**
+ * Input: rate: 3, unit 'seconds' => Output: 20/m (i.e., 20 times per minute)
+ * @param  {[type]} rate [description]
+ * @param  {[type]} unit [description]
+ * @return {[type]}      [description]
+ */
+const _formatTaskRateForGoogle = (rate, unit) => {
+	if (!rate)
+		throw new Error('Missing required argument \'rate\'.')
+	rate = rate * 1
+	
+	if (typeof(rate) != 'number')
+		throw new Error('Wrong argument exception. \'rate\' must be a number.')
+
+	if (rate <= 0)
+		throw new Error('Wrong argument exception. \'rate\' must be strictly greater than zero.') 
+
+	switch (unit) {
+	case 'milliseconds':
+		return _convertMillisecondsIntervalToSecondsFrequency(rate)
+	case 'seconds':
+		return _convertSecondsIntervalToMinutesFrequency(rate)
+	case 'minutes':
+		return _convertMinutesIntervalToHoursFrequency(rate)
+	case 'hours':
+		return _convertHoursIntervalToDaysFrequency(rate)
+	case 'days':
+		return _convertDaysIntervalToDaysFrequency(rate)
+	default:
+		throw new Error(`Invalid argument exception. Time unit '${unit}' can't be converted to a unit understood by Google Cloud Task API.`)
+	}
+}
+
+const _convertMillisecondsIntervalToSecondsFrequency = i => {
+	const r = 1000/i 
+	if (r >= 1)
+		return `${Math.round(r)}/s`
+	else 
+		return _convertSecondsIntervalToMinutesFrequency(i/1000)
+}
+
+const _convertSecondsIntervalToMinutesFrequency = i => {
+	if (i == 1)
+		return '1/s'
+	const r = 60/i 
+	if (r >= 1)
+		return `${Math.round(r)}/m`
+	else 
+		return _convertMinutesIntervalToHoursFrequency(i/60)
+}
+
+const _convertMinutesIntervalToHoursFrequency = i => {
+	if (i == 1)
+		return '1/m'
+	const r = 60/i 
+	if (r >= 1)
+		return `${Math.round(r)}/h`
+	else 
+		return _convertHoursIntervalToDaysFrequency(i/60)
+}
+
+const _convertHoursIntervalToDaysFrequency = i => {
+	if (i == 1)
+		return '1/h'
+	const r = 24/i 
+	if (r >= 1)
+		return `${Math.round(r)}/d`
+	else 
+		return _convertDaysIntervalToDaysFrequency(i/24)
+}
+
+const _convertDaysIntervalToDaysFrequency = i => {
+	if (i == 1)
+		return '1/d'
+	const r = 1/i 
+	if (r >= 1)
+		return `${Math.round(r)}/d`
+	else 
+		return `${r.toFixed(2)*1}/d`
+}
+
 const _formatScheduleForGoogle = schedule => 
 	(schedule || '')
 		.replace(/tue\s/g, 'tuesday ')
@@ -714,7 +827,12 @@ const _getAppJsonFiles = (options={}) => file.getJsonFiles(options.projectPath, 
 	.then(jsonFiles => jsonFiles.map(x => path.basename(x)).filter(x => x.match(/^app\./) && (x.split('.').length == 3 || x.split('.').length == 2)))
 
 
-module.exports = addStuffs
+module.exports = {
+	add: addStuffs,
+	_: {
+		formatTaskRateForGoogle: _formatTaskRateForGoogle
+	}
+}
 
 
 

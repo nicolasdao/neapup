@@ -42,21 +42,26 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Deleting project ${bold(projectId)}`)
-								const startDel = Date.now()
-								return gcp.project.delete(projectId, token, merge(options, { confirm: true, verbose: false }))
-									.then(() => {
-										waitDone()
-										console.log(success(`Project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
-									})
-									.catch(e => {
-										waitDone()
-										const er = JSON.parse(e.message)
-										if (er.code == 403 && er.message && er.message.indexOf('not authorized') >= 0)
-											console.log(error('Permission to delete denied. You don\'t have enough access privileges to perform this action.'))
-										else
-											throw e
-									})
+								return askQuestion(question(`Are you sure you want to delete project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+									if (yes == 'n')
+										return
+									
+									waitDone = wait(`Deleting project ${bold(projectId)}`)
+									const startDel = Date.now()
+									return gcp.project.delete(projectId, token, merge(options, { confirm: true, verbose: false }))
+										.then(() => {
+											waitDone()
+											console.log(success(`Project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
+										})
+										.catch(e => {
+											waitDone()
+											const er = JSON.parse(e.message)
+											if (er.code == 403 && er.message && er.message.indexOf('not authorized') >= 0)
+												console.log(error('Permission to delete denied. You don\'t have enough access privileges to perform this action.'))
+											else
+												throw e
+										})
+								})
 							})
 					else if (answer == 'service') 
 						return _getAppJsonFiles(options)
@@ -74,13 +79,18 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 										const choices = services.map((svc, idx) => ({ name: ` ${bold(idx+1)}. ${bold(svc.id)}`, value: svc.id }))
 										return promptList({ message: 'Which service do you want to delete?', choices, separator: false }).then(service => {
 											if (service) {
-												waitDone = wait(`Deleting service ${bold(service)} in project ${bold(projectId)}`)
-												const startDel = Date.now()
-												return gcp.app.service.delete(projectId, service, token, merge(options, { confirm: true }))
-													.then(() => {
-														waitDone()
-														console.log(success(`Service ${bold(service)} in project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
-													})
+												return askQuestion(question(`Are you sure you want to delete service ${bold(service)} from project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+													if (yes == 'n')
+														return
+													
+													waitDone = wait(`Deleting service ${bold(service)} in project ${bold(projectId)}`)
+													const startDel = Date.now()
+													return gcp.app.service.delete(projectId, service, token, merge(options, { confirm: true }))
+														.then(() => {
+															waitDone()
+															console.log(success(`Service ${bold(service)} in project ${bold(projectId)} successfully deleted in ${((Date.now() - startDel)/1000).toFixed(2)} seconds`))
+														})
+												})
 											}
 										})
 									})

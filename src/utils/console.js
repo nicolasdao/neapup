@@ -161,7 +161,7 @@ const searchAnswer = (message, choices, filterFn) => {
 		name: 'data',
 		message,
 		source: (answersSoFar, input) => Promise.resolve(null).then(() => filterFn(input, choices))
-	}])
+	}]).then(({ data }) => data)
 }
 
 const execCommand = command => new Promise((success, failure) => {
@@ -265,6 +265,44 @@ const displayTable = (rows, options={}) => {
 	return stringRows 
 }
 
+/**
+ * [description]
+ * @param  {[type]} items   		[description]
+ * @param  {String} options.indent 	[description]
+ * @param  {String} options.prefix 	[description]
+ * @return {[type]}         		[description]
+ */
+const displayList = (items, options={}) => {
+	if (!items || items.length == 0)
+		return
+	
+	if (!Array.isArray(items))
+		throw new Error('Invalid argument exception. \'items\' must be an Array')
+	
+	const { indent='', prefix='- ' } = options
+	const emptyPrefix = collection.seed(prefix.length).map(() => ' ').join('')
+	const list = []
+	items.forEach((item, idx) => {
+		if (!item)
+			throw new Error(`Missing required argument. Item ${idx} in 'items' array is required.`)
+		if (!item.name)
+			throw new Error(`Missing required argument. Item ${idx} in 'items' array is missing the required 'name' property.`)
+
+		const { name, value } = item
+		if (Array.isArray(name)) {
+			const end = name.length - 1
+			name.forEach((n,i) => list.push({ name: `${indent}${i == 0 ? prefix : emptyPrefix}${n}${i == end ? ':' : ''}`, value: i == end ? value : '' }))
+		} else 
+			list.push({ name: (`${indent}${prefix}${name}:`), value })
+	})
+
+	const maxNameLength = Math.max(...list.map(l => l.name.length))
+	list.forEach(({ name, value }) => {
+		const diff = collection.seed(maxNameLength - name.length).map(() => ' ').join('')
+		console.log(`${name}${diff}  ${bold(value)}`)
+	})
+}
+
 module.exports = {
 	aborted,
 	askQuestion,
@@ -285,5 +323,6 @@ module.exports = {
 	wait,
 	warn,
 	displayTable,
-	searchAnswer
+	searchAnswer,
+	displayList
 }

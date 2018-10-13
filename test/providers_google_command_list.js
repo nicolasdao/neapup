@@ -8,6 +8,7 @@
 
 const { assert } = require('chai')
 const { _: { formatGoogleDomainRes } } = require('../src/providers/google/command/list')
+const { _: { formatTaskRateForGoogle } } = require('../src/providers/google/command/add')
 
 describe('google', () => {
 	describe('command', () => {
@@ -110,6 +111,29 @@ describe('google', () => {
 					assert.equal(records[9].name, 'www.api-test.v1', '24')
 					assert.equal(records[9].rrdata, 'ghs.googlehosted.com', '25')
 				})
+			})
+		})
+
+		describe('list', () => {
+			describe('#_.formatTaskRateForGoogle', () => {
+				it('01 - Should format the time intervals to frequencies', () => {
+					assert.equal(formatTaskRateForGoogle(200, 'milliseconds'), '5/s', '01')
+					assert.equal(formatTaskRateForGoogle(2000, 'milliseconds'), '30/m', '02')
+					assert.equal(formatTaskRateForGoogle(60000, 'milliseconds'), '1/m', '03')
+					assert.equal(formatTaskRateForGoogle(1200000, 'milliseconds'), '3/h', '04')
+					assert.equal(formatTaskRateForGoogle(3600000, 'milliseconds'), '1/h', '05')
+					assert.equal(formatTaskRateForGoogle(14400000, 'milliseconds'), '6/d', '06')
+					assert.equal(formatTaskRateForGoogle(86400000, 'milliseconds'), '1/d', '07')
+					assert.equal(formatTaskRateForGoogle(172800000, 'milliseconds'), '0.5/d', '08')
+					assert.equal(formatTaskRateForGoogle(3, 'days'), '0.33/d', '09')
+					assert.equal(formatTaskRateForGoogle(0.5, 'days'), '2/d', '10')
+					assert.equal(formatTaskRateForGoogle(10, 'seconds'), '6/m', '11')
+					assert.equal(formatTaskRateForGoogle(100, 'seconds'), '36/h', '12')
+					assert.equal(formatTaskRateForGoogle(1, 'seconds'), '1/s', '13')
+					assert.equal(formatTaskRateForGoogle(1, 'minutes'), '1/m', '14')
+					assert.equal(formatTaskRateForGoogle(1, 'hours'), '1/h', '15')
+					assert.equal(formatTaskRateForGoogle(1, 'days'), '1/d', '16')
+				})	
 			})
 		})
 	})

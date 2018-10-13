@@ -22,7 +22,8 @@ const IAM_SERVICE_API = 'iam.googleapis.com'
 const OAUTH_TOKEN_URL = () => 'https://www.googleapis.com/oauth2/v4/token'
 const GCP_CONSENT_PAGE = query => `https://accounts.google.com/o/oauth2/v2/auth?${query}`
 // RESOURCE MANAGER
-const PROJECTS_URL = (projectId) => `https://cloudresourcemanager.googleapis.com/v1/projects${projectId ? `/${projectId}` : ''}`
+const PROJECT_URL = (projectId) => `https://cloudresourcemanager.googleapis.com/v1/projects${projectId ? `/${projectId}` : ''}`
+const PROJECT_OPS_URL = operationId => `https://cloudresourcemanager.googleapis.com/v1/operations/${operationId}`
 // BILLING
 const BILLING_PAGE = projectId => `https://console.cloud.google.com/billing/linkedaccount?project=${projectId}&folder&organizationId`
 const BILLING_INFO_URL = projectId => `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
@@ -271,7 +272,7 @@ const getProject = (projectId, token, options={}) => Promise.resolve(null).then(
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting a project ${bold(projectId)} from Google Cloud Platform.`, opts)
 
-	return fetch.get(PROJECTS_URL(projectId), {
+	return fetch.get(PROJECT_URL(projectId), {
 		Accept: 'application/json',
 		Authorization: `Bearer ${token}`
 	}, { verbose: opts.verbose })
@@ -303,7 +304,7 @@ const listProjects = (token, options={}) => Promise.resolve(null).then(() => {
 	_showDebug('Requesting a list of all projects from Google Cloud Platform.', options)
 	_validateRequiredParams({ token })
 
-	return fetch.get(`${PROJECTS_URL()}?pageSize=2000`, {
+	return fetch.get(`${PROJECT_URL()}?pageSize=2000`, {
 		Accept: 'application/json',
 		Authorization: `Bearer ${token}`
 	})
@@ -326,13 +327,13 @@ const createProject = (name, projectId, token, options={}) => Promise.resolve(nu
 	_validateRequiredParams({ name, projectId, token })
 	_showDebug(`Creating a new project on Google Cloud Platform called ${bold(name)} (id: ${bold(projectId)}).`, options)
 
-	return fetch.post(PROJECTS_URL(), {
+	return fetch.post(PROJECT_URL(), {
 		Accept: 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({
 		name,
 		projectId
-	}))
+	}), options)
 		.then(res => {
 			if (res.data && res.data.name)
 				res.data.operationId = res.data.name.split('/').slice(-1)[0]
@@ -340,9 +341,9 @@ const createProject = (name, projectId, token, options={}) => Promise.resolve(nu
 		})
 		.then(res => options.confirm
 			? promise.check(
-				() => getProject(projectId, token, objectHelper.merge(options, { verbose: false })).catch(e => (() => ({ data: {} }))(e)), 
-				({ data }) => {
-					if (data && data.name)
+				() => getResourceOperation(res.data.operationId, token, objectHelper.merge(options, { verbose: false })), 
+				(res) => {
+					if (res.data && res.data.name)
 						return true
 					else 
 						return false
@@ -362,10 +363,20 @@ const deleteProject = (projectId, token, options={}) => Promise.resolve(null).th
 	_validateRequiredParams({ projectId })
 	_showDebug(`Deleting project ${bold(projectId)} in Google Cloud Platform.`, options)
 
-	return fetch.delete(PROJECTS_URL(projectId), {
+	return fetch.delete(PROJECT_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null ,options)
+})
+
+const getResourceOperation = (opId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ opId, token })
+	_showDebug('Requesting an resource\'s operation details from Google Cloud Platform.', options)
+
+	return fetch.get(PROJECT_OPS_URL(opId), {
+		Accept: 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
 })
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1247,7 +1258,9 @@ const updateCron = (projectId, cronJobs, token, options={}) => Promise.resolve(n
 		'content-length': bodyForGoogle.length,
 		Authorization: `Bearer ${token}`
 	}, bodyForGoogle, objectHelper.merge(options, { resParsingMethod: 'text' }))
-		.then(res => ({ status: res.status, data: res.data || {} }))
+		.then(res => {
+			return { status: res.status, data: res.data || {} }
+		})
 		.then(res => uploadFileToBucket(projectId, `${projectId}-neapup-cron`, { name: 'cron.yaml', content: bodyForNeapUp }, token, options).then(() => res))
 })
 
@@ -1460,7 +1473,7 @@ const getProjectIAMpolicies = (projectId, token, options={}) => Promise.resolve(
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting all service accounts from Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.post(`${PROJECTS_URL(projectId)}:getIamPolicy`, {
+	return fetch.post(`${PROJECT_URL(projectId)}:getIamPolicy`, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null, options)
@@ -1601,7 +1614,7 @@ const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options
 
 	const body = JSON.stringify({ policy }, null, ' ')
 
-	return fetch.post(`${PROJECTS_URL(projectId)}:setIamPolicy`, {
+	return fetch.post(`${PROJECT_URL(projectId)}:setIamPolicy`, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, body, options)

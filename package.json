@@ -32,7 +32,7 @@
     "rls": "standard-version --release-as",
     "start": "node index.js",
     "test": "mocha",
-    "v": "node version.js"
+    "v": "node -e \"console.log(require('./package.json').version)\""
   },
   "author": "Nicolas Dao",
   "license": "BSD-3-Clause",

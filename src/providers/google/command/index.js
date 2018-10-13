@@ -8,6 +8,7 @@
 
 const utils = require('../utils')
 const { list } = require('./list')
+const { add } = require('./add')
 
 module.exports = {
 	service: {
@@ -20,7 +21,7 @@ module.exports = {
 	manage: require('./manage'),
 	domain: require('./domain'),
 	remove: require('./remove'),
-	add: require('./add')
+	add
 }
 
 

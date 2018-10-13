@@ -306,7 +306,7 @@ const chooseAProject = (appJsonFiles=[], allowedProjectIds=[], token, comeBackTo
 		else {
 			const choices = [
 				...allowedProjectIds.map(value => ({ name: `${bold(value)}`, value })),
-				{ name: `${'[Login to another Google Account]'}`, value: 'account' }
+				{ name: `${'Login to another Google Account'}`, value: 'account', specialOps: true }
 			]
 
 			const formattedChoices = choices.map((x, idx) => {
