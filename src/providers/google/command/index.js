@@ -1,10 +1,12 @@
 /**
- * Copyright (c) 2018, Neap Pty Ltd.
- * All rights reserved.
+ * Copyright (C) 2017-2018 neap pty ltd nic@neap.co
  * 
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
-*/
+ * This file is part of the neapup project.
+ * 
+ * The neapup project can not be copied and/or distributed without the express
+ * permission of neap pty ltd nic@neap.co.
+ */
+
 
 const utils = require('../utils')
 const { list } = require('./list')
