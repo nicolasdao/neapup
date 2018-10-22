@@ -30,7 +30,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 					{ name: ' 3. Custom Domains', value: 'domains' },
 					{ name: ' 4. Cron Jobs', value: 'cron' },
 					{ name: ' 5. Task Queues', value: 'queue' },
-					{ name: ' 6. Service Accounts', value: 'service-accounts' },
+					{ name: ' 6. Accesses', value: 'access' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -103,7 +103,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => listProjectDomains(projectId, token, options))
-					else if (answer == 'service-accounts') 
+					else if (answer == 'access') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => {

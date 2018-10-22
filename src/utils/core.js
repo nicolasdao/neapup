@@ -183,6 +183,19 @@ const mergeCollection = (...collections) => {
 	})
 }
 
+const uniq = (a, fn) => {
+	fn = fn || (x => x)
+	return Object.keys((a || []).reduce((acc,x) => {
+		const v = fn(x)
+		if (!acc[v])
+			acc[v] = true
+		return acc
+	}, {}))
+}
+
+const validateUrl = (value='') => /^(?:(?:(?:https?|ftp):)?\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)(?:\.(?:[a-z\u00a1-\uffff0-9]-*)*[a-z\u00a1-\uffff0-9]+)*(?:\.(?:[a-z\u00a1-\uffff]{2,})))(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(value)
+const validateEmail = (value='') => /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/i.test(value)
+
 module.exports = {
 	identity: {
 		'new': newId
@@ -193,7 +206,8 @@ module.exports = {
 	collection: {
 		sortBy,
 		seed: newSeed,
-		merge: mergeCollection
+		merge: mergeCollection,
+		uniq
 	},
 	obj: {
 		merge: mergeObj,
@@ -202,5 +216,9 @@ module.exports = {
 		diff: getDiff,
 		same: objAreSame,
 		arrayAreDiff: arrayObjAreDiff
+	},
+	validate: {
+		url: validateUrl,
+		email: validateEmail
 	}
 }

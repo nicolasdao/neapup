@@ -157,6 +157,14 @@ const promptList = ({
 	})
 }
 
+/**
+ * [description]
+ * @param  {String} message  		Question
+ * @param  {[String]} choices  		String array containing all the choices
+ * @param  {Function} filterFn 		(input, choicesLeft) => ... where 'input' is the string input from the user and 
+ *                               	'choicesLeft' is the subset of 'choices' that currently match the previous 'input'
+ * @return {String}          		One of the value in 'choices'
+ */
 const searchAnswer = (message, choices, filterFn) => {
 	return inquirer.prompt([{
 		type: 'autocomplete',

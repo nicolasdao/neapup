@@ -10,6 +10,7 @@
 // For more info about Google Cloud API, go to: 
 // 	- Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
 // 	- Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
+// 	- Google Bucket IAM: https://cloud.google.com/storage/docs/json_api/v1/buckets/setIamPolicy
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
@@ -56,8 +57,8 @@ const BUILD_URL = (projectId, buildId) => `https://cloudbuild.googleapis.com/v1/
 // CLOUD TASK API
 const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://cloudtasks.googleapis.com/v2beta3/projects/${projectId}/locations/${locationId}/queues${queueName ? `/${queueName}${taskName ? `/tasks/${taskName}` : ''}` : ''}`
 // IAM API
-const SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${encodeURIComponent(serviceEmail)}` : ''}`
-const SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys${keyId ? `/${keyId}` : ''}`
+const IAM_SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${encodeURIComponent(serviceEmail)}` : ''}`
+const IAM_SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${IAM_SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys${keyId ? `/${keyId}` : ''}`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1481,6 +1482,27 @@ const getProjectIAMpolicies = (projectId, token, options={}) => Promise.resolve(
 		.then(res => ({ status: res.status, data: res.data || {} }))
 })
 
+const listUsers = (projectId, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ status, data: policy }) => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all users from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const users = ((policy || {}).bindings || []).filter(b => b.members && b.members.some(m => m && m.indexOf('user:') == 0)).reduce((acc,b) => {
+		b.members.filter(m => m && m.indexOf('user:') == 0).map(m => m.replace('user:', '')).forEach(email => {
+			const roles = acc[email] || []
+			roles.push(b.role)
+			acc[email] = roles
+		})
+
+		return acc
+	}, {})
+
+	const data = []
+	Object.keys(users).forEach(email => data.push({ user: email, roles: users[email] }))
+
+	return { status, data }
+})
+
+
 const _attachPoliciesToServiceAccounts = (accounts=[], bindings=[]) => {
 	accounts = (accounts || []).map(a => {
 		a.roles = []
@@ -1501,7 +1523,7 @@ const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolic
 	_showDebug(`Requesting all service accounts from Google Cloud Platform's project ${bold(projectId)}.`, options)
 
 	policy = policy || {}
-	return fetch.get(SERVICE_ACCOUNT_URL(projectId), {
+	return fetch.get(IAM_SERVICE_ACCOUNT_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, options)
@@ -1551,16 +1573,16 @@ const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolic
  * @param  {[type]}   name                          [description]
  * @param  {[type]}   label                         [description]
  * @param  {[type]}   token                         [description]
- * @param  {Object}   options.roles                [description]
- * @param  {Object}   options.createJsonKey        [description]
- * @param  {Object}   options.skipEnableApi        [description]
-* @return {[type]}                                 [description]
+ * @param  {Object}   options.roles                	[description]
+ * @param  {Object}   options.createJsonKey        	[description]
+ * @param  {Object}   options.skipEnableApi        	[description]
+* @return {[type]}                                 	[description]
  */
 const createServiceAccount = (projectId, name, label, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, name, token })
 	_showDebug(`Creating a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.post(SERVICE_ACCOUNT_URL(projectId), {
+	return fetch.post(IAM_SERVICE_ACCOUNT_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({
@@ -1597,11 +1619,17 @@ const createServiceAccount = (projectId, name, label, token, options={}) => Prom
 		})
 })
 
-const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
+const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options={}) => 
+	_addRoles(projectId, serviceEmail, roles, token, objectHelper.merge(options, { serviceAccount: true }))
+
+const addRolesToUser = (projectId, userEmail, roles, token, options={}) => 
+	_addRoles(projectId, userEmail, roles, token, objectHelper.merge(options, { serviceAccount: false }))
+
+const _addRoles = (projectId, serviceEmail, roles, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
 	_validateRequiredParams({ projectId, serviceEmail, roles: roles && roles.length > 0 ? true : null, token })
 	_showDebug(`Add roles to service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	const member = `serviceAccount:${serviceEmail}`
+	const member = options.serviceAccount ? `serviceAccount:${serviceEmail}` : `user:${serviceEmail}`
 	policy = policy || {}
 	policy.bindings = policy.bindings || []
 	roles.forEach(role => {
@@ -1626,7 +1654,7 @@ const deleteServiceAccount = (projectId, serviceEmail, token, options={}) => Pro
 	_validateRequiredParams({ projectId, serviceEmail, token })
 	_showDebug(`Deleting a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.delete(SERVICE_ACCOUNT_URL(projectId, serviceEmail), {
+	return fetch.delete(IAM_SERVICE_ACCOUNT_URL(projectId, serviceEmail), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null, options)
@@ -1643,7 +1671,7 @@ const listServiceAccountKeys = (projectId, serviceEmail, token, options={}) => P
 	_validateRequiredParams({ projectId, serviceEmail, token })
 	_showDebug(`Listing all keys for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.get(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
+	return fetch.get(IAM_SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, objectHelper.merge(options, { verbose: false }))
@@ -1660,7 +1688,7 @@ const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) =
 	_validateRequiredParams({ projectId, serviceEmail, token })
 	_showDebug(`Generating a new key for a service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	return fetch.post(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
+	return fetch.post(IAM_SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({
@@ -1679,13 +1707,180 @@ const generateServiceAccountKey = (projectId, serviceEmail, token, options={}) =
 		})
 })
 
+/**
+ * [description]
+ * @param  {Boolean} 	options.usersOnly 	[description]
+ * @return {[String]}         				[description]
+ */
+const getAllAccountRoles = (options={}) => options.usersOnly 
+	? Promise.resolve([
+		'roles/viewer',
+		'roles/editor',
+		'roles/owner'])
+	: Promise.resolve([
+		'roles/viewer',
+		'roles/editor',
+		'roles/owner',
+		'roles/appengine.appAdmin',
+		'roles/appengine.appViewer',
+		'roles/appengine.codeViewer',
+		'roles/appengine.deployer',
+		'roles/appengine.serviceAdmin',
+		'roles/bigquery.admin',
+		'roles/bigquery.dataEditor',
+		'roles/bigquery.dataOwner',
+		'roles/bigquery.dataViewer',
+		'roles/bigquery.jobUser',
+		'roles/bigquery.user',
+		'roles/bigtable.admin',
+		'roles/bigtable.reader',
+		'roles/bigtable.user',
+		'roles/bigtable.viewer',
+		'roles/billing.admin',
+		'roles/billing.creator',
+		'roles/billing.projectManager',
+		'roles/billing.user',
+		'roles/billing.viewer',
+		'roles/cloudbuild.builds.editor',
+		'roles/cloudbuild.builds.viewer',
+		'roles/clouddebugger.agent',
+		'roles/clouddebugger.user',
+		'roles/cloudiot.admin',
+		'roles/cloudiot.deviceController',
+		'roles/cloudiot.editor',
+		'roles/cloudiot.provisioner',
+		'roles/cloudiot.serviceAgent',
+		'roles/cloudiot.viewer',
+		'roles/cloudkms.admin',
+		'roles/cloudkms.cryptoKeyDecrypter',
+		'roles/cloudkms.cryptoKeyEncrypter',
+		'roles/cloudkms.cryptoKeyEncrypterDecrypter',
+		'roles/cloudsql.admin',
+		'roles/cloudsql.client',
+		'roles/cloudsql.editor',
+		'roles/cloudsql.viewer',
+		'roles/cloudsupport.admin',
+		'roles/cloudsupport.viewer',
+		'roles/cloudtrace.admin',
+		'roles/cloudtrace.agent',
+		'roles/cloudtrace.user',
+		'roles/composer.admin',
+		'roles/composer.environmentAndStorageObjectAdmin',
+		'roles/composer.environmentAndStorageObjectViewer',
+		'roles/composer.user',
+		'roles/composer.worker',
+		'roles/compute.admin',
+		'roles/compute.imageUser',
+		'roles/compute.instanceAdmin',
+		'roles/compute.loadBalancerAdmin',
+		'roles/compute.networkAdmin',
+		'roles/compute.networkUser',
+		'roles/compute.networkViewer',
+		'roles/compute.securityAdmin',
+		'roles/compute.storageAdmin',
+		'roles/compute.viewer',
+		'roles/compute.xpnAdmin',
+		'roles/container.admin',
+		'roles/container.clusterAdmin',
+		'roles/container.developer',
+		'roles/container.viewer',
+		'roles/dataflow.developer',
+		'roles/dataflow.viewer',
+		'roles/dataflow.worker',
+		'roles/dataproc.editor',
+		'roles/dataproc.viewer',
+		'roles/datastore.importExportAdmin',
+		'roles/datastore.indexAdmin',
+		'roles/datastore.owner',
+		'roles/datastore.user',
+		'roles/datastore.viewer',
+		'roles/deploymentmanager.editor',
+		'roles/deploymentmanager.typeEditor',
+		'roles/deploymentmanager.typeViewer',
+		'roles/deploymentmanager.viewer',
+		'roles/dialogflow.admin',
+		'roles/dialogflow.client',
+		'roles/dialogflow.reader',
+		'roles/dns.admin',
+		'roles/dns.reader',
+		'roles/endpoints.portalAdmin',
+		'roles/errorreporting.admin',
+		'roles/errorreporting.user',
+		'roles/errorreporting.viewer',
+		'roles/errorreporting.writer',
+		'roles/iam.organizationRoleAdmin',
+		'roles/iam.organizationRoleViewer',
+		'roles/iam.roleAdmin',
+		'roles/iam.roleViewer',
+		'roles/iam.securityReviewer',
+		'roles/iam.serviceAccountAdmin',
+		'roles/iam.serviceAccountKeyAdmin',
+		'roles/iam.serviceAccountTokenCreator',
+		'roles/iam.serviceAccountUser',
+		'roles/iap.httpsResourceAccessor',
+		'roles/logging.admin',
+		'roles/logging.configWriter',
+		'roles/logging.logWriter',
+		'roles/logging.privateLogViewer',
+		'roles/logging.viewer',
+		'roles/ml.admin',
+		'roles/ml.developer',
+		'roles/ml.jobOwner',
+		'roles/ml.modelOwner',
+		'roles/ml.modelUser',
+		'roles/ml.operationOwner',
+		'roles/ml.viewer',
+		'roles/monitoring.admin',
+		'roles/monitoring.editor',
+		'roles/monitoring.metricWriter',
+		'roles/monitoring.viewer',
+		'roles/orgpolicy.policyAdmin',
+		'roles/pubsub.admin',
+		'roles/pubsub.editor',
+		'roles/pubsub.publisher',
+		'roles/pubsub.subscriber',
+		'roles/pubsub.viewer',
+		'roles/redis.admin',
+		'roles/redis.editor',
+		'roles/redis.viewer',
+		'roles/resourcemanager.folderAdmin',
+		'roles/resourcemanager.folderCreator',
+		'roles/resourcemanager.folderEditor',
+		'roles/resourcemanager.folderIamAdmin',
+		'roles/resourcemanager.folderMover',
+		'roles/resourcemanager.folderViewer',
+		'roles/resourcemanager.lienModifier',
+		'roles/resourcemanager.organizationViewer',
+		'roles/resourcemanager.projectCreator',
+		'roles/resourcemanager.projectDeleter',
+		'roles/resourcemanager.projectIamAdmin',
+		'roles/resourcemanager.projectMover',
+		'roles/servicemanagement.quotaAdmin',
+		'roles/servicemanagement.quotaViewer',
+		'roles/servicemanagement.serviceController',
+		'roles/source.admin',
+		'roles/source.reader',
+		'roles/source.writer',
+		'roles/spanner.admin',
+		'roles/spanner.databaseAdmin',
+		'roles/spanner.databaseReader',
+		'roles/spanner.databaseUser',
+		'roles/spanner.viewer',
+		'roles/storage.admin',
+		// 'roles/storage.legacyBucketOwner',
+		// 'roles/storage.legacyBucketWriter',
+		// 'roles/storage.legacyObjectOwner',
+		// 'roles/storage.legacyObjectReader',
+		'roles/storage.objectAdmin',
+		'roles/storage.objectCreator',
+		'roles/storage.objectViewer'
+	])
+
 const deleteServiceAccountKey = (projectId, serviceEmail, keyId, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, serviceEmail, keyId, token })
 	_showDebug(`Deleting a service account key in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-	console.log(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail, keyId))
-
-	return fetch.delete(SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail, keyId), {
+	return fetch.delete(IAM_SERVICE_ACCOUNT_KEY_URL(projectId, serviceEmail, keyId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, null, objectHelper.merge(options, { verbose: false }))
@@ -1820,7 +2015,15 @@ module.exports = {
 			key: {
 				generate: generateServiceAccountKey,
 				delete: deleteServiceAccountKey
+			},
+			roles: {
+				'get': getAllAccountRoles,
+				add: addRolesToServiceAccount
 			}
+		},
+		user: {
+			list: listUsers,
+			create: addRolesToUser
 		},
 		iamPolicies: {
 			'get': getProjectIAMpolicies

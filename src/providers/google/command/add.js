@@ -16,7 +16,7 @@ const {
 	bold, wait, error, promptList, link, askQuestion, 
 	question, success, displayTable, searchAnswer, 
 	info, cmd, warn, displayList } = require('../../../utils/console')
-const { obj: { merge }, file, collection, timezone } = require('../../../utils')
+const { obj: { merge }, file, collection, timezone, validate } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
@@ -35,7 +35,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 3. Routing Rule', value: 'routing' },
 					{ name: ' 4. Cron Job', value: 'cron' },
 					{ name: ' 5. Task Queue', value: 'queue' },
-					{ name: ' 6. Service Account Key', value: 'service-account-key' },
+					{ name: ' 6. Access', value: 'access' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -202,7 +202,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													.then(answer => { // 2. Name the queue
 														target = answer 
 														const defaultName = target.toLowerCase()
-														return _enterQueueName(`Enter a queue name (default ${bold(defaultName)}): `, 'The queue name is required.', { default: defaultName })
+														return _enterName(`Enter a queue name (default ${bold(defaultName)}): `, 'The queue name is required.', { default: defaultName })
 													})
 													.then(answer => { // 3. Enter a rate unit
 														taskQueueName = answer
@@ -315,93 +315,33 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 										}
 									})
 							})
-					else if (answer == 'service-account-key') 
+					else if (answer == 'access')
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-								return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
-									waitDone()
-									const title = `Service Accounts For Project ${projectId}`
-									console.log(`\nService Accounts For Project ${bold(projectId)}`)
-									console.log(collection.seed(title.length).map(() => '=').join(''))
-									console.log(' ')
-									const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
-									if (svcAccountsWithRoles.length == 0)
-										console.log('   No Service Accounts found\n')
-									else {
-										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
-											const [ role_01, ...roles ] = a.roles
-											const [ key_01, ...keys ] = a.keys
-											const rolesAndKeys = collection.merge(roles, keys)
-											const rCount = rolesAndKeys[0].length
-											acc.push({
-												' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-												name: a.displayName,
-												accountId: a.email.split('@')[0],
-												roles: role_01.replace('roles/', ''),
-												'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
-											})
-											rolesAndKeys[0].forEach((r, idx) => acc.push({
-												' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-												name: '',
-												accountId: '',
-												roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
-												'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
-											}))
-											return acc
-										}, []), { 
-											indent: '   ', 
-											line: cells => cells[0].trim().match(/^\+/), 
-											format: cell => {
-												const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
-												if (rm) {
-													const r = rm.replace(/(-|\+)/, ' ')
-													return cell.replace(rm, r)
-												}
-												else
-													return cell
-											}
-										})
-										console.log(' ')
+								const choices = [
+									{ name: `I want to give access to a new ${bold('Collaborator')} to help me manage my Cloud`, value: 'user' },
+									{ name: `I want to give access to an ${bold('Agent')} so it can use my Cloud (e.g., adding files to my Storage)`, value: 'agent' }
+								]
 
-										const keyOptions = svcAccountsWithRoles.map((a,idx) => ({
-											name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
-										}))
-
-										return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service account: `, choices: keyOptions, separator: false }).then(answer => {
-											if (answer >= 0) {
-												const { email: serviceEmail, displayName } = svcAccountsWithRoles[answer*1]
-												waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
-												return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
-													.then(({ data }) => {
-														waitDone()
-														console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
-														console.log(' ')
-														console.log(JSON.stringify(data, null, '  '))
-														console.log(' ')
-													})
-													.catch(e => {
-														waitDone()
-														const er = JSON.parse(e.message)
-														if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
-															console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
-															console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
-															console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
-														} else 
-															throw e
-													})
-											}
-										})
-									}
+								return promptList({ message: 'What type of access do you want to grant? ', choices, separator: false }).then(answer => {
+									return { projectId, token, choice: answer }
 								})
 							})
+							.then(({ projectId, token, choice }) => {
+								if (!choice)
+									return
+								else if (choice == 'user')
+									return _manageUsers(projectId, token, waitDone, options)
+								else 
+									return _manageServiceAccount(projectId, token, waitDone, options)
+							})
 					else if (answer == 'routing') 
-						throw new Error('Oops!!! This is not supported yet')
+						console.log(error('Operation not supported yet. Coming soon...'))
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => addStuffs(options))
 					else
-						throw new Error('Oops!!! This is not supported yet')
+						console.log(error('Operation not supported yet. Coming soon...'))
 				})
 			}).catch(e => {
 				waitDone()
@@ -411,18 +351,321 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
-const _enterQueueName = (q, r, options={}) => askQuestion(question(q)).then(answer => {
-	if (!answer && options.default)
-		return options.default
-	else if (!answer) {
-		console.log(error(r))
-		return _enterQueueName(q, r, options)
-	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
-		return answer
-	else {
-		console.log(error('Invalid name. A task queue can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
-		return _enterQueueName(q, r, options)
-	}
+const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	waitDone = wait(`Listing users for project ${bold(projectId)}`)
+	return gcp.project.user.list(projectId, token, options)
+		.then(({ data }) => {
+			waitDone()
+			const title = `Users For Project ${projectId}`
+			console.log(`\nUsers For Project ${bold(projectId)}`)
+			console.log(collection.seed(title.length).map(() => '=').join(''))
+			console.log(' ')
+			data = data || []
+			if (data.length == 0)
+				console.log('   No Users found\n')
+			else {
+				displayTable(data.reduce((acc, a, idx) => {
+					const [ role_01='', ...roles ] = a.roles || []
+					const rCount = roles.length
+					acc.push({
+						' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+						name: a.user,
+						roles: role_01.replace('roles/', '') || 'No roles'
+					})
+					roles.forEach((r, idx) => acc.push({
+						' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+						name: '',
+						roles: (roles[idx] || '').replace('roles/', '')
+					}))
+					return acc
+				}, []), { // All the following is to gronk an array 
+					indent: '   ', 
+					line: cells => cells[0].trim().match(/^\+/), 
+					format: cell => {
+						const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+						if (rm) {
+							const r = rm.replace(/(-|\+)/, ' ')
+							return cell.replace(rm, r)
+						}
+						else
+							return cell
+					}
+				})
+				console.log('\n')
+			}
+		})
+		.then(() => _enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.'))
+		.then(email => _chooseAccountRoles({ usersOnly: true, required: true }).then(roles => ({ roles, email })))
+		.then(({ roles, email }) => {
+			if (!email)
+				return 
+			return askQuestion(question(`Are you sure you want to add ${bold(email)} as a Collaborators (Y/n) ? `)).then(yes => {
+				if (yes == 'n')
+					return		
+
+				waitDone = wait(`Adding a new Collaborator to project ${bold(projectId)}...`)
+				return gcp.project.user.create(projectId, email, roles, token, options)
+					.then(() => {
+						waitDone()
+						console.log(success(`New Collaborator successfully created in project ${bold(projectId)}\n`))
+					})
+			})
+		})
+})
+
+const _manageServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	const choices = [
+		{ name: 'Create a new service account', value: 'account' },
+		{ name: 'Add roles to a service account', value: 'role' },
+		{ name: 'Generate a new service account JSON key', value: 'key' }
+	]
+
+	return promptList({ message: 'What do want to do: ', choices, separator: false }).then(answer => {
+		return { projectId, token, choice: answer }
+	})
+		.then(({ projectId, token, choice }) => {
+			if (!choice)
+				return null
+
+			if (choice == 'key')
+				return _addJsonKeyToServiceAccount(projectId, token, waitDone, options)
+			else if (choice == 'role') 
+				return _addRolesToServiceAccount(projectId, token, waitDone, options)
+			else
+				return _addServiceAccount(projectId, token, waitDone, options)
+		})
+})
+
+const _addServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+		waitDone()
+		const title = `Service Accounts For Project ${projectId}`
+		console.log(`\nService Accounts For Project ${bold(projectId)}`)
+		console.log(collection.seed(title.length).map(() => '=').join(''))
+		console.log(' ')
+		svcAccounts = svcAccounts || []
+		if (svcAccounts.length == 0)
+			console.log('   No Service Accounts found\n')
+		else {
+			displayTable(svcAccounts.reduce((acc, a, idx) => {
+				const [ role_01='', ...roles ] = a.roles || []
+				const [ key_01='', ...keys ] = a.keys || []
+				const rolesAndKeys = collection.merge(roles, keys)
+				const rCount = rolesAndKeys[0].length
+				acc.push({
+					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+					name: a.displayName,
+					accountId: a.email.split('@')[0],
+					roles: role_01.replace('roles/', '') || 'No roles',
+					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
+				})
+				rolesAndKeys[0].forEach((r, idx) => acc.push({
+					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+					name: '',
+					accountId: '',
+					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
+				}))
+				return acc
+			}, []), { // All the following is to gronk an array 
+				indent: '   ', 
+				line: cells => cells[0].trim().match(/^\+/), 
+				format: cell => {
+					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+					if (rm) {
+						const r = rm.replace(/(-|\+)/, ' ')
+						return cell.replace(rm, r)
+					}
+					else
+						return cell
+				}
+			})
+			console.log(' ')
+
+			let serviceAccountName
+			return _enterName('Enter a service account name: ', 'The service account name is required.')
+				.then(name => {
+					serviceAccountName = name 
+					return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
+						if (yes == 'n')
+							return
+						return _chooseAccountRoles()
+					})
+				})
+				.then(roles => {
+					return askQuestion(question('Are you sure you want to create this new service account (Y/n) ? ')).then(yes => {
+						if (yes == 'n')
+							return		
+						
+						const opts = roles && roles.length > 0 ? merge(options, { roles }) : options
+						waitDone = wait('Creating a new service account...')
+						return gcp.project.serviceAccount.create(projectId, serviceAccountName, serviceAccountName, token, opts)
+							.then(() => {
+								waitDone()
+								console.log(success(`New service account successfully created in project ${bold(projectId)}\n`))
+							})
+					})
+				})
+		}
+	})
+})
+
+const _addRolesToServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() =>{
+	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+		waitDone()
+		const title = `Service Accounts For Project ${projectId}`
+		console.log(`\nService Accounts For Project ${bold(projectId)}`)
+		console.log(collection.seed(title.length).map(() => '=').join(''))
+		console.log(' ')
+		svcAccounts = svcAccounts || []
+		if (svcAccounts.length == 0)
+			console.log('   No Service Accounts found\n')
+		else {
+			displayTable(svcAccounts.reduce((acc, a, idx) => {
+				const [ role_01='', ...roles ] = a.roles || []
+				const [ key_01='', ...keys ] = a.keys || []
+				const rolesAndKeys = collection.merge(roles, keys)
+				const rCount = rolesAndKeys[0].length
+				acc.push({
+					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+					name: a.displayName,
+					accountId: a.email.split('@')[0],
+					roles: role_01.replace('roles/', '') || 'No roles',
+					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
+				})
+				rolesAndKeys[0].forEach((r, idx) => acc.push({
+					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+					name: '',
+					accountId: '',
+					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
+				}))
+				return acc
+			}, []), { 
+				indent: '   ', 
+				line: cells => cells[0].trim().match(/^\+/), 
+				format: cell => {
+					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+					if (rm) {
+						const r = rm.replace(/(-|\+)/, ' ')
+						return cell.replace(rm, r)
+					}
+					else
+						return cell
+				}
+			})
+			console.log(' ')
+
+			const keyOptions = svcAccounts.map((a,idx) => ({
+				name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+			}))
+
+			let serviceAccountEmail
+			return promptList({ message: 'Add roles to one of the following service accounts: ', choices: keyOptions, separator: false }).then(answer => {
+				if (answer >= 0) {
+					const v = svcAccounts[answer*1]
+					serviceAccountEmail = v.email
+					return  _chooseAccountRoles()
+				}
+				return false 
+			})
+				.then(roles => {
+					if (roles) {
+						return askQuestion(question(`Are you sure you want to add ${roles.length} role${roles.length > 1 ? 's' : ''} (Y/n) ? `)).then(yes => {
+							if (yes == 'n')
+								return						
+							
+							waitDone = wait(`Granting ${bold(serviceAccountEmail)} access to project ${bold(projectId)}`)
+							return gcp.project.serviceAccount.roles.add(projectId, serviceAccountEmail, roles, token, options).then(() => {
+								waitDone()
+								console.log(success(`Access successfully granted to ${bold(serviceAccountEmail)} to access project ${bold(projectId)}`))
+							})
+						})
+					}
+				})
+		}
+	})
+})
+
+const _addJsonKeyToServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+		waitDone()
+		const title = `Service Accounts For Project ${projectId}`
+		console.log(`\nService Accounts For Project ${bold(projectId)}`)
+		console.log(collection.seed(title.length).map(() => '=').join(''))
+		console.log(' ')
+		svcAccounts = svcAccounts || []
+		if (svcAccounts.length == 0)
+			console.log('   No Service Accounts found\n')
+		else {
+			displayTable(svcAccounts.reduce((acc, a, idx) => {
+				const [ role_01='', ...roles ] = a.roles || []
+				const [ key_01='', ...keys ] = a.keys || []
+				const rolesAndKeys = collection.merge(roles, keys)
+				const rCount = rolesAndKeys[0].length
+				acc.push({
+					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+					name: a.displayName,
+					accountId: a.email.split('@')[0],
+					roles: role_01.replace('roles/', '') || 'No roles',
+					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
+				})
+				rolesAndKeys[0].forEach((r, idx) => acc.push({
+					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+					name: '',
+					accountId: '',
+					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
+				}))
+				return acc
+			}, []), { 
+				indent: '   ', 
+				line: cells => cells[0].trim().match(/^\+/), 
+				format: cell => {
+					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+					if (rm) {
+						const r = rm.replace(/(-|\+)/, ' ')
+						return cell.replace(rm, r)
+					}
+					else
+						return cell
+				}
+			})
+			console.log(' ')
+
+			const keyOptions = svcAccounts.map((a,idx) => ({
+				name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+			}))
+
+			return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service accounts: `, choices: keyOptions, separator: false }).then(answer => {
+				if (answer >= 0) {
+					const { email: serviceEmail, displayName } = svcAccounts[answer*1]
+					waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
+					return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
+						.then(({ data }) => {
+							waitDone()
+							console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
+							console.log(' ')
+							console.log(JSON.stringify(data, null, '  '))
+							console.log(' ')
+						})
+						.catch(e => {
+							waitDone()
+							const er = JSON.parse(e.message)
+							if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
+								console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
+								console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
+								console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
+							} else 
+								throw e
+						})
+				}
+			})
+		}
+	})
 })
 
 const _configureCronSchedule = () => Promise.resolve(null)
@@ -548,6 +791,34 @@ const _configureCronSchedule = () => Promise.resolve(null)
 			return null
 		}
 	})
+
+const _enterName = (q, r, options={}) => askQuestion(question(q)).then(answer => {
+	if (!answer && options.default)
+		return options.default
+	else if (!answer) {
+		console.log(error(r))
+		return _enterName(q, r, options)
+	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
+		return answer
+	else {
+		console.log(error('Invalid name. A valid name can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
+		return _enterName(q, r, options)
+	}
+})
+
+const _enterEmail = (q, r, options={}) => askQuestion(question(q)).then(answer => {
+	if (!answer && options.default)
+		return options.default
+	else if (!answer) {
+		console.log(error(r))
+		return _enterEmail(q, r, options)
+	} else if (validate.email(answer))
+		return answer
+	else {
+		console.log(error('Invalid email.'))
+		return _enterEmail('Enter a valid email: ', 'An email is required to invite a new Collaborator.', options)
+	}
+})
 
 /**
  * [description]
@@ -735,6 +1006,33 @@ const _chooseTimeZone = () => {
 			}
 		})
 }
+
+/**
+ * [description]
+ * @param  {Boolean} options.required 	[description]
+ * @return {[type]}         			[description]
+ */
+const _chooseAccountRoles = (options={}) => gcp.project.serviceAccount.roles.get(options).then(roles => {
+	roles = (roles || []).map(r => r.replace('roles/', ''))
+	const answers = []
+	return searchAnswer('Select a roles: ', roles, (input='', rs) => rs.filter(r => r && r.toLowerCase().indexOf(input.toLowerCase().trim()) >= 0)).then(answer => {
+		if (answer)
+			answers.push(`roles/${answer}`)
+
+		return askQuestion(question('Do you want to add another role (Y/n) ? ')).then(yes => {
+			if (yes == 'n') {
+				if (options.required && answers.length == 0)
+					console.log(error('You must add at least one role to continue'))
+				else
+					return answers
+			}
+			return _chooseAccountRoles(options).then(otherRoles => {
+				const totals = [...answers, ...(otherRoles || [])]
+				return collection.uniq(totals)
+			})
+		})
+	})
+})
 
 /**
  * Input: rate: 3, unit 'seconds' => Output: 20/m (i.e., 20 times per minute)
