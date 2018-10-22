@@ -352,17 +352,17 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
 const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
-	waitDone = wait(`Listing users for project ${bold(projectId)}`)
+	waitDone = wait(`Listing Collaborators for project ${bold(projectId)}`)
 	return gcp.project.user.list(projectId, token, options)
 		.then(({ data }) => {
 			waitDone()
-			const title = `Users For Project ${projectId}`
-			console.log(`\nUsers For Project ${bold(projectId)}`)
+			const title = `Collaborators For Project ${projectId}`
+			console.log(`\nCollaborators For Project ${bold(projectId)}`)
 			console.log(collection.seed(title.length).map(() => '=').join(''))
 			console.log(' ')
 			data = data || []
 			if (data.length == 0)
-				console.log('   No Users found\n')
+				console.log('   No Collaborators found\n')
 			else {
 				displayTable(data.reduce((acc, a, idx) => {
 					const [ role_01='', ...roles ] = a.roles || []

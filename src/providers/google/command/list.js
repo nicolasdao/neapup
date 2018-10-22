@@ -107,53 +107,107 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-								return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
-									waitDone()
-									const title = `Service Accounts For Project ${projectId}`
-									console.log(`\nService Accounts For Project ${bold(projectId)}`)
-									console.log(collection.seed(title.length).map(() => '=').join(''))
-									console.log(' ')
-									const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
-									if (svcAccountsWithRoles.length == 0)
-										console.log('   No Service Accounts found\n')
-									else {
-										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
-											const [ role_01, ...roles ] = a.roles
-											const [ key_01, ...keys ] = a.keys
-											const rolesAndKeys = collection.merge(roles, keys)
-											const rCount = rolesAndKeys[0].length
-											acc.push({
-												' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-												name: a.displayName,
-												accountId: a.email.split('@')[0],
-												roles: role_01.replace('roles/', ''),
-												'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
-											})
-											rolesAndKeys[0].forEach((r, idx) => acc.push({
-												' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-												name: '',
-												accountId: '',
-												roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
-												'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
-											}))
-											return acc
-										}, []), { 
-											indent: '   ', 
-											line: cells => cells[0].trim().match(/^\+/), 
-											format: cell => {
-												const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
-												if (rm) {
-													const r = rm.replace(/(-|\+)/, ' ')
-													return cell.replace(rm, r)
-												}
-												else
-													return cell
+								const choices = [
+									{ name: `The ${bold('Collaborators')} helping me to manage my Cloud`, value: 'user' },
+									{ name: `The ${bold('Agents')} using my Cloud (e.g., adding files to storage)`, value: 'agent' }
+								]
+								return promptList({ message: 'What do you want to list? ', choices, separator: false }).then(choice => ({ projectId, token, choice }))
+							})
+							.then(({ projectId, token, choice }) => {
+								if (!choice)
+									return 
+								else if (choice == 'user') {
+									waitDone = wait(`Listing Collaborators for project ${bold(projectId)}`)
+									return gcp.project.user.list(projectId, token, options)
+										.then(({ data }) => {
+											waitDone()
+											const title = `Collaborators For Project ${projectId}`
+											console.log(`\nCollaborators For Project ${bold(projectId)}`)
+											console.log(collection.seed(title.length).map(() => '=').join(''))
+											console.log(' ')
+											data = data || []
+											if (data.length == 0)
+												console.log('   No Collaborators found\n')
+											else {
+												displayTable(data.reduce((acc, a, idx) => {
+													const [ role_01='', ...roles ] = a.roles || []
+													const rCount = roles.length
+													acc.push({
+														' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+														name: a.user,
+														roles: role_01.replace('roles/', '') || 'No roles'
+													})
+													roles.forEach((r, idx) => acc.push({
+														' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+														name: '',
+														roles: (roles[idx] || '').replace('roles/', '')
+													}))
+													return acc
+												}, []), { // All the following is to gronk an array 
+													indent: '   ', 
+													line: cells => cells[0].trim().match(/^\+/), 
+													format: cell => {
+														const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+														if (rm) {
+															const r = rm.replace(/(-|\+)/, ' ')
+															return cell.replace(rm, r)
+														}
+														else
+															return cell
+													}
+												})
+												console.log('\n')
 											}
 										})
+								} else {
+									waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+									return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+										waitDone()
+										const title = `Service Accounts For Project ${projectId}`
+										console.log(`\nService Accounts For Project ${bold(projectId)}`)
+										console.log(collection.seed(title.length).map(() => '=').join(''))
 										console.log(' ')
-									}
-								})
+										const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
+										if (svcAccountsWithRoles.length == 0)
+											console.log('   No Service Accounts found\n')
+										else {
+											displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
+												const [ role_01, ...roles ] = a.roles
+												const [ key_01, ...keys ] = a.keys
+												const rolesAndKeys = collection.merge(roles, keys)
+												const rCount = rolesAndKeys[0].length
+												acc.push({
+													' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+													name: a.displayName,
+													accountId: a.email.split('@')[0],
+													roles: role_01.replace('roles/', ''),
+													'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
+												})
+												rolesAndKeys[0].forEach((r, idx) => acc.push({
+													' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+													name: '',
+													accountId: '',
+													roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+													'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
+												}))
+												return acc
+											}, []), { 
+												indent: '   ', 
+												line: cells => cells[0].trim().match(/^\+/), 
+												format: cell => {
+													const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+													if (rm) {
+														const r = rm.replace(/(-|\+)/, ' ')
+														return cell.replace(rm, r)
+													}
+													else
+														return cell
+												}
+											})
+											console.log(' ')
+										}
+									})
+								}
 							})
 					else
 						return _listProjectDetails(activeProjectIds, token, options)

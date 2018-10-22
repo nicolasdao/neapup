@@ -1482,6 +1482,21 @@ const getProjectIAMpolicies = (projectId, token, options={}) => Promise.resolve(
 		.then(res => ({ status: res.status, data: res.data || {} }))
 })
 
+const _attachPoliciesToServiceAccounts = (accounts=[], bindings=[]) => {
+	accounts = (accounts || []).map(a => {
+		a.roles = []
+		return a
+	})
+
+	bindings.forEach(({ role, members=[] }) => {
+		const serviceAccountEmails = members.filter(m => m.indexOf('serviceAccount:') == 0).map(m => m.replace('serviceAccount:', ''))
+		if (serviceAccountEmails.length > 0)
+			accounts.filter(a => serviceAccountEmails.some(email => email == a.email)).forEach(a => a.roles.push(role))
+	})
+
+	return accounts
+}
+
 const listUsers = (projectId, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ status, data: policy }) => {
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`Requesting all users from Google Cloud Platform's project ${bold(projectId)}.`, options)
@@ -1501,22 +1516,6 @@ const listUsers = (projectId, token, options={}) => getProjectIAMpolicies(projec
 
 	return { status, data }
 })
-
-
-const _attachPoliciesToServiceAccounts = (accounts=[], bindings=[]) => {
-	accounts = (accounts || []).map(a => {
-		a.roles = []
-		return a
-	})
-
-	bindings.forEach(({ role, members=[] }) => {
-		const serviceAccountEmails = members.filter(m => m.indexOf('serviceAccount:') == 0).map(m => m.replace('serviceAccount:', ''))
-		if (serviceAccountEmails.length > 0)
-			accounts.filter(a => serviceAccountEmails.some(email => email == a.email)).forEach(a => a.roles.push(role))
-	})
-
-	return accounts
-}
 
 const listServiceAccounts = (projectId, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
 	_validateRequiredParams({ projectId, token })
