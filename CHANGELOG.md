@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.27"></a>
+## [0.22.27](https://gitlab.com/neap/neap-manager/compare/v0.22.26...v0.22.27) (2018-10-23)
+
+
+### Features
+
+* Allow to add any role to a user ([4f6c0b8](https://gitlab.com/neap/neap-manager/commit/4f6c0b8))
+
+
+
 <a name="0.22.26"></a>
 ## [0.22.26](https://gitlab.com/neap/neap-manager/compare/v0.22.25...v0.22.26) (2018-10-23)
 
