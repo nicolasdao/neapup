@@ -417,7 +417,7 @@ const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(nu
 
 const _addUsers = (projectId, token, waitDone, users, options) => 
 	_enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: users.map(d => d.user) })
-		.then(email => _chooseAccountRoles({ usersOnly: true, required: true }).then(roles => ({ roles, email })))
+		.then(email => _chooseAccountRoles({ required: true }).then(roles => ({ roles, email })))
 		.then(({ roles, email }) => {
 			if (!email)
 				return 
@@ -466,12 +466,17 @@ const _addRolesToUser = (projectId, token, waitDone, users, options) => Promise.
 		})
 })
 
-const _manageServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
-	const choices = [
-		{ name: 'Create a new service account', value: 'account' },
-		{ name: 'Add roles to a service account', value: 'role' },
-		{ name: 'Generate a new service account JSON key', value: 'key' }
-	]
+const _manageServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
+	if (!svcAccounts)
+		return 
+	
+	const choices = [{ name: 'Create a new service account', value: 'account' }]
+
+	if (svcAccounts && svcAccounts.length > 0)
+		choices.push(...[
+			{ name: 'Add roles to a service account', value: 'role' },
+			{ name: 'Generate a new service account JSON key', value: 'key' }
+		])
 
 	return promptList({ message: 'What do want to do: ', choices, separator: false }).then(answer => {
 		return { projectId, token, choice: answer }
@@ -481,46 +486,50 @@ const _manageServiceAccount = (projectId, token, waitDone, options) => Promise.r
 				return null
 
 			if (choice == 'key')
-				return _addJsonKeyToServiceAccount(projectId, token, waitDone, options)
+				return _addJsonKeyToServiceAccount(projectId, token, waitDone, svcAccounts, options)
 			else if (choice == 'role') 
-				return _addRolesToServiceAccount(projectId, token, waitDone, options)
+				return _addRolesToServiceAccount(projectId, token, waitDone, svcAccounts, options)
 			else
-				return _addServiceAccount(projectId, token, waitDone, options)
+				return _addServiceAccount(projectId, token, waitDone, svcAccounts, options)
 		})
 })
 
-const _addServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
-	if (!svcAccounts)
+const _addJsonKeyToServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
+	if (!svcAccounts || svcAccounts.length == 0)
 		return 
-	
-	let serviceAccountName
-	return _enterName('Enter a service account name: ', 'The service account name is required.')
-		.then(name => {
-			serviceAccountName = name 
-			return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
-				if (yes == 'n')
-					return
-				return _chooseAccountRoles()
-			})
-		})
-		.then(roles => {
-			return askQuestion(question('Are you sure you want to create this new service account (Y/n) ? ')).then(yes => {
-				if (yes == 'n')
-					return		
-				
-				const opts = roles && roles.length > 0 ? merge(options, { roles }) : options
-				waitDone = wait('Creating a new service account...')
-				return gcp.project.serviceAccount.create(projectId, serviceAccountName, serviceAccountName, token, opts)
-					.then(() => {
-						waitDone()
-						console.log(success(`New service account successfully created in project ${bold(projectId)}\n`))
-					})
-			})
-		})
+
+	const keyOptions = svcAccounts.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+	}))
+
+	return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service accounts: `, choices: keyOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const { email: serviceEmail, displayName } = svcAccounts[answer*1]
+			waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
+			return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
+				.then(({ data }) => {
+					waitDone()
+					console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
+					console.log(' ')
+					console.log(JSON.stringify(data, null, '  '))
+					console.log(' ')
+				})
+				.catch(e => {
+					waitDone()
+					const er = JSON.parse(e.message)
+					if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
+						console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
+						console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
+						console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
+					} else 
+						throw e
+				})
+		}
+	})
 })
 
-const _addRolesToServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
-	if (!svcAccounts)
+const _addRolesToServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
+	if (!svcAccounts || svcAccounts.length == 0)
 		return 
 
 	const keyOptions = svcAccounts.map((a,idx) => ({
@@ -552,38 +561,32 @@ const _addRolesToServiceAccount = (projectId, token, waitDone, options) => _list
 		})
 })
 
-const _addJsonKeyToServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
-	if (!svcAccounts)
-		return 
+const _addServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
 
-	const keyOptions = svcAccounts.map((a,idx) => ({
-		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
-	}))
-
-	return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service accounts: `, choices: keyOptions, separator: false }).then(answer => {
-		if (answer >= 0) {
-			const { email: serviceEmail, displayName } = svcAccounts[answer*1]
-			waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
-			return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
-				.then(({ data }) => {
-					waitDone()
-					console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
-					console.log(' ')
-					console.log(JSON.stringify(data, null, '  '))
-					console.log(' ')
-				})
-				.catch(e => {
-					waitDone()
-					const er = JSON.parse(e.message)
-					if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
-						console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
-						console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
-						console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
-					} else 
-						throw e
-				})
-		}
-	})
+	let serviceAccountName
+	return _enterName('Enter a service account name: ', 'The service account name is required.')
+		.then(name => {
+			serviceAccountName = name 
+			return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
+				if (yes == 'n')
+					return
+				return _chooseAccountRoles()
+			})
+		})
+		.then(roles => {
+			return askQuestion(question('Are you sure you want to create this new service account (Y/n) ? ')).then(yes => {
+				if (yes == 'n')
+					return		
+				
+				const opts = roles && roles.length > 0 ? merge(options, { roles }) : options
+				waitDone = wait('Creating a new service account...')
+				return gcp.project.serviceAccount.create(projectId, serviceAccountName, serviceAccountName, token, opts)
+					.then(() => {
+						waitDone()
+						console.log(success(`New service account successfully created in project ${bold(projectId)}\n`))
+					})
+			})
+		})
 })
 
 const _listServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {

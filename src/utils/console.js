@@ -35,7 +35,7 @@ const highlight = text => bold.underline(text)
 const info = (...msgs) => `${gray('>')} ${msgs.join('\n')}`
 const debugInfo = (...msgs) => `${green('> DEBUG')} ${msgs.join('\n')}`
 const success = (...msgs) => `${green('✓')} ${msgs.join('\n')}` 
-const question = (...msgs) => `${green('?')} ${msgs.join('\n')}`
+const question = (...msgs) => `${green('?')} ${bold(msgs.join('\n'))}`
 const note = (...msgs) => gray(info(...msgs))
 const cmd = text => `${gray('`')}${cyan(text)}${gray('`')}`
 const link = text => underline(text)
