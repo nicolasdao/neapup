@@ -1662,7 +1662,7 @@ const _removeRoles = (projectId, serviceEmail, roles, token, options={}) => getP
 	const member = options.serviceAccount ? `serviceAccount:${serviceEmail}` : `user:${serviceEmail}`
 	policy = policy || {}
 	policy.bindings = policy.bindings || []
-	
+
 	if (!roles)
 		policy.bindings.forEach(b => {
 			b.members = (b.members || []).filter(m => m != member)
@@ -2060,7 +2060,8 @@ module.exports = {
 			create: addRolesToUser,
 			delete: (projectId, serviceEmail, token, options={}) => removeRolesFromUser(projectId, serviceEmail, null, token, options),
 			roles: {
-				delete: removeRolesFromUser
+				delete: removeRolesFromUser,
+				add: addRolesToUser
 			}
 		},
 		iamPolicies: {

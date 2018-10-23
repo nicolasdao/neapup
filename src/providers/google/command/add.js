@@ -320,7 +320,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
 							.then(({ projectId, token }) => {
 								const choices = [
-									{ name: `I want to give access to a new ${bold('Collaborator')} to help me manage my Cloud`, value: 'user' },
+									{ name: `I want to give access to a ${bold('Collaborator')} to help me manage my Cloud`, value: 'user' },
 									{ name: `I want to give access to an ${bold('Agent')} so it can use my Cloud (e.g., adding files to my Storage)`, value: 'agent' }
 								]
 
@@ -393,9 +393,30 @@ const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(nu
 				})
 				console.log('\n')
 			}
-			return data
+			
+			const choices = [
+				{ name: 'Add a new Collaborator', value: 'user' },
+				{ name: 'Add roles to a Collaborator', value: 'role' }
+			]
+
+			return promptList({ message: 'What do want to do: ', choices, separator: false })
+				.then(answer => {
+					return { projectId, token, choice: answer }
+				})
+				.then(({ projectId, token, choice }) => {
+					if (!choice)
+						return null
+
+					if (choice == 'role') 
+						return _addRolesToUser(projectId, token, waitDone, data, options)
+					else
+						return _addUsers(projectId, token, waitDone, data, options)
+				})
 		})
-		.then(data => _enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: data.map(d => d.user) }))
+})
+
+const _addUsers = (projectId, token, waitDone, users, options) => 
+	_enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: users.map(d => d.user) })
 		.then(email => _chooseAccountRoles({ usersOnly: true, required: true }).then(roles => ({ roles, email })))
 		.then(({ roles, email }) => {
 			if (!email)
@@ -411,6 +432,37 @@ const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(nu
 						console.log(success(`New Collaborator successfully created in project ${bold(projectId)}\n`))
 					})
 			})
+		})
+
+const _addRolesToUser = (projectId, token, waitDone, users, options) => Promise.resolve(null).then(() => {
+	if (!users || users.length == 0)
+		return 
+
+	const keyOptions = users.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.user}`, value: a.user
+	}))
+
+	let email
+	return promptList({ message: 'Add roles to one of the following Collaborator: ', choices: keyOptions, separator: false })
+		.then(answer => {
+			if (answer) {
+				email = answer
+				return  _chooseAccountRoles({ usersOnly: true, required: true })
+			}
+		})
+		.then(roles => {
+			if (roles) {
+				return askQuestion(question(`Are you sure you want to add ${roles.length} role${roles.length > 1 ? 's' : ''} (Y/n) ? `)).then(yes => {
+					if (yes == 'n')
+						return						
+					
+					waitDone = wait(`Adding roles to ${bold(email)} for project ${bold(projectId)}`)
+					return gcp.project.user.roles.add(projectId, email, roles, token, options).then(() => {
+						waitDone()
+						console.log(success(`Roles successfully added to ${bold(email)} for project ${bold(projectId)}`))
+					})
+				})
+			}
 		})
 })
 
@@ -939,10 +991,9 @@ const _chooseTimeZone = () => {
  * @param  {Boolean} options.required 	[description]
  * @return {[type]}         			[description]
  */
-const _chooseAccountRoles = (options={}) => gcp.project.serviceAccount.roles.get(options).then(roles => {
-	roles = (roles || []).map(r => r.replace('roles/', ''))
+const _chooseAccountRoles = (options={}) => (options.roles ? Promise.resolve(options.roles) : gcp.project.serviceAccount.roles.get(options)).then(roles => {
 	const answers = []
-	return searchAnswer('Select a roles: ', roles, (input='', rs) => rs.filter(r => r && r.toLowerCase().indexOf(input.toLowerCase().trim()) >= 0)).then(answer => {
+	return searchAnswer('Select a roles: ', (roles || []).map(r => r.replace('roles/', '')), (input='', rs) => rs.filter(r => r && r.toLowerCase().indexOf(input.toLowerCase().trim()) >= 0)).then(answer => {
 		if (answer)
 			answers.push(`roles/${answer}`)
 
@@ -953,7 +1004,8 @@ const _chooseAccountRoles = (options={}) => gcp.project.serviceAccount.roles.get
 				else
 					return answers
 			}
-			return _chooseAccountRoles(options).then(otherRoles => {
+			const _roles = (roles || []).filter(r => !answers.some(a => a == r))
+			return _chooseAccountRoles(merge(options, { roles: _roles })).then(otherRoles => {
 				const totals = [...answers, ...(otherRoles || [])]
 				return collection.uniq(totals)
 			})

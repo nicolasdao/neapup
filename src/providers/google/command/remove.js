@@ -186,8 +186,8 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
 								const choices = [
-									{ name: `I want to decrease access for a ${bold('Collaborator')} to limit how he/she manages my Cloud`, value: 'user' },
-									{ name: `I want to decrease access for an ${bold('Agent')} to limit how it uses my Cloud (e.g., adding files to my Storage)`, value: 'agent' }
+									{ name: `I want to decrease/remove access of a ${bold('Collaborator')} to limit how he/she manages my Cloud`, value: 'user' },
+									{ name: `I want to decrease/remove access of an ${bold('Agent')} to limit how it uses my Cloud (e.g., adding files to my Storage)`, value: 'agent' }
 								]
 
 								return promptList({ message: 'What type of access do you want to change? ', choices, separator: false }).then(answer => {
