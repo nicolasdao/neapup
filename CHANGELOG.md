@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.26"></a>
+## [0.22.26](https://gitlab.com/neap/neap-manager/compare/v0.22.25...v0.22.26) (2018-10-23)
+
+
+### Features
+
+* Add more granular control to add access to users ([5e2ef38](https://gitlab.com/neap/neap-manager/commit/5e2ef38))
+* Add support for adding users and service accounts ([5e88f09](https://gitlab.com/neap/neap-manager/commit/5e88f09))
+* Add support for listing collaborators of a project ([6032429](https://gitlab.com/neap/neap-manager/commit/6032429))
+* Add support for removing access ([7533860](https://gitlab.com/neap/neap-manager/commit/7533860))
+
+
+
 <a name="0.22.25"></a>
 ## [0.22.25](https://gitlab.com/neap/neap-manager/compare/v0.22.24...v0.22.25) (2018-10-13)
 
