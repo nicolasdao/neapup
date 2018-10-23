@@ -393,8 +393,9 @@ const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(nu
 				})
 				console.log('\n')
 			}
+			return data
 		})
-		.then(() => _enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.'))
+		.then(data => _enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: data.map(d => d.user) }))
 		.then(email => _chooseAccountRoles({ usersOnly: true, required: true }).then(roles => ({ roles, email })))
 		.then(({ roles, email }) => {
 			if (!email)
@@ -436,7 +437,104 @@ const _manageServiceAccount = (projectId, token, waitDone, options) => Promise.r
 		})
 })
 
-const _addServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+const _addServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
+	if (!svcAccounts)
+		return 
+	
+	let serviceAccountName
+	return _enterName('Enter a service account name: ', 'The service account name is required.')
+		.then(name => {
+			serviceAccountName = name 
+			return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
+				if (yes == 'n')
+					return
+				return _chooseAccountRoles()
+			})
+		})
+		.then(roles => {
+			return askQuestion(question('Are you sure you want to create this new service account (Y/n) ? ')).then(yes => {
+				if (yes == 'n')
+					return		
+				
+				const opts = roles && roles.length > 0 ? merge(options, { roles }) : options
+				waitDone = wait('Creating a new service account...')
+				return gcp.project.serviceAccount.create(projectId, serviceAccountName, serviceAccountName, token, opts)
+					.then(() => {
+						waitDone()
+						console.log(success(`New service account successfully created in project ${bold(projectId)}\n`))
+					})
+			})
+		})
+})
+
+const _addRolesToServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
+	if (!svcAccounts)
+		return 
+
+	const keyOptions = svcAccounts.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+	}))
+
+	let serviceAccountEmail
+	return promptList({ message: 'Add roles to one of the following service accounts: ', choices: keyOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const v = svcAccounts[answer*1]
+			serviceAccountEmail = v.email
+			return  _chooseAccountRoles()
+		}
+		return false 
+	})
+		.then(roles => {
+			if (roles) {
+				return askQuestion(question(`Are you sure you want to add ${roles.length} role${roles.length > 1 ? 's' : ''} (Y/n) ? `)).then(yes => {
+					if (yes == 'n')
+						return						
+					
+					waitDone = wait(`Granting ${bold(serviceAccountEmail)} access to project ${bold(projectId)}`)
+					return gcp.project.serviceAccount.roles.add(projectId, serviceAccountEmail, roles, token, options).then(() => {
+						waitDone()
+						console.log(success(`Access successfully granted to ${bold(serviceAccountEmail)} to access project ${bold(projectId)}`))
+					})
+				})
+			}
+		})
+})
+
+const _addJsonKeyToServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
+	if (!svcAccounts)
+		return 
+
+	const keyOptions = svcAccounts.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+	}))
+
+	return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service accounts: `, choices: keyOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const { email: serviceEmail, displayName } = svcAccounts[answer*1]
+			waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
+			return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
+				.then(({ data }) => {
+					waitDone()
+					console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
+					console.log(' ')
+					console.log(JSON.stringify(data, null, '  '))
+					console.log(' ')
+				})
+				.catch(e => {
+					waitDone()
+					const er = JSON.parse(e.message)
+					if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
+						console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
+						console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
+						console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
+					} else 
+						throw e
+				})
+		}
+	})
+})
+
+const _listServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
 	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
 	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
 		waitDone()
@@ -483,190 +581,11 @@ const _addServiceAccount = (projectId, token, waitDone, options) => Promise.reso
 			})
 			console.log(' ')
 
-			let serviceAccountName
-			return _enterName('Enter a service account name: ', 'The service account name is required.')
-				.then(name => {
-					serviceAccountName = name 
-					return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
-						if (yes == 'n')
-							return
-						return _chooseAccountRoles()
-					})
-				})
-				.then(roles => {
-					return askQuestion(question('Are you sure you want to create this new service account (Y/n) ? ')).then(yes => {
-						if (yes == 'n')
-							return		
-						
-						const opts = roles && roles.length > 0 ? merge(options, { roles }) : options
-						waitDone = wait('Creating a new service account...')
-						return gcp.project.serviceAccount.create(projectId, serviceAccountName, serviceAccountName, token, opts)
-							.then(() => {
-								waitDone()
-								console.log(success(`New service account successfully created in project ${bold(projectId)}\n`))
-							})
-					})
-				})
+			return svcAccounts
 		}
 	})
 })
 
-const _addRolesToServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() =>{
-	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
-		waitDone()
-		const title = `Service Accounts For Project ${projectId}`
-		console.log(`\nService Accounts For Project ${bold(projectId)}`)
-		console.log(collection.seed(title.length).map(() => '=').join(''))
-		console.log(' ')
-		svcAccounts = svcAccounts || []
-		if (svcAccounts.length == 0)
-			console.log('   No Service Accounts found\n')
-		else {
-			displayTable(svcAccounts.reduce((acc, a, idx) => {
-				const [ role_01='', ...roles ] = a.roles || []
-				const [ key_01='', ...keys ] = a.keys || []
-				const rolesAndKeys = collection.merge(roles, keys)
-				const rCount = rolesAndKeys[0].length
-				acc.push({
-					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-					name: a.displayName,
-					accountId: a.email.split('@')[0],
-					roles: role_01.replace('roles/', '') || 'No roles',
-					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
-				})
-				rolesAndKeys[0].forEach((r, idx) => acc.push({
-					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-					name: '',
-					accountId: '',
-					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
-					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
-				}))
-				return acc
-			}, []), { 
-				indent: '   ', 
-				line: cells => cells[0].trim().match(/^\+/), 
-				format: cell => {
-					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
-					if (rm) {
-						const r = rm.replace(/(-|\+)/, ' ')
-						return cell.replace(rm, r)
-					}
-					else
-						return cell
-				}
-			})
-			console.log(' ')
-
-			const keyOptions = svcAccounts.map((a,idx) => ({
-				name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
-			}))
-
-			let serviceAccountEmail
-			return promptList({ message: 'Add roles to one of the following service accounts: ', choices: keyOptions, separator: false }).then(answer => {
-				if (answer >= 0) {
-					const v = svcAccounts[answer*1]
-					serviceAccountEmail = v.email
-					return  _chooseAccountRoles()
-				}
-				return false 
-			})
-				.then(roles => {
-					if (roles) {
-						return askQuestion(question(`Are you sure you want to add ${roles.length} role${roles.length > 1 ? 's' : ''} (Y/n) ? `)).then(yes => {
-							if (yes == 'n')
-								return						
-							
-							waitDone = wait(`Granting ${bold(serviceAccountEmail)} access to project ${bold(projectId)}`)
-							return gcp.project.serviceAccount.roles.add(projectId, serviceAccountEmail, roles, token, options).then(() => {
-								waitDone()
-								console.log(success(`Access successfully granted to ${bold(serviceAccountEmail)} to access project ${bold(projectId)}`))
-							})
-						})
-					}
-				})
-		}
-	})
-})
-
-const _addJsonKeyToServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
-	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
-		waitDone()
-		const title = `Service Accounts For Project ${projectId}`
-		console.log(`\nService Accounts For Project ${bold(projectId)}`)
-		console.log(collection.seed(title.length).map(() => '=').join(''))
-		console.log(' ')
-		svcAccounts = svcAccounts || []
-		if (svcAccounts.length == 0)
-			console.log('   No Service Accounts found\n')
-		else {
-			displayTable(svcAccounts.reduce((acc, a, idx) => {
-				const [ role_01='', ...roles ] = a.roles || []
-				const [ key_01='', ...keys ] = a.keys || []
-				const rolesAndKeys = collection.merge(roles, keys)
-				const rCount = rolesAndKeys[0].length
-				acc.push({
-					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-					name: a.displayName,
-					accountId: a.email.split('@')[0],
-					roles: role_01.replace('roles/', '') || 'No roles',
-					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
-				})
-				rolesAndKeys[0].forEach((r, idx) => acc.push({
-					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-					name: '',
-					accountId: '',
-					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
-					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
-				}))
-				return acc
-			}, []), { 
-				indent: '   ', 
-				line: cells => cells[0].trim().match(/^\+/), 
-				format: cell => {
-					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
-					if (rm) {
-						const r = rm.replace(/(-|\+)/, ' ')
-						return cell.replace(rm, r)
-					}
-					else
-						return cell
-				}
-			})
-			console.log(' ')
-
-			const keyOptions = svcAccounts.map((a,idx) => ({
-				name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
-			}))
-
-			return promptList({ message: `Generate a new ${bold('JSON Key')} for one of the following service accounts: `, choices: keyOptions, separator: false }).then(answer => {
-				if (answer >= 0) {
-					const { email: serviceEmail, displayName } = svcAccounts[answer*1]
-					waitDone = wait(`Generating a new JSON Key for the ${bold(displayName)} service account in project ${bold(projectId)}...`)
-					return gcp.project.serviceAccount.key.generate(projectId, serviceEmail, token, merge(options, { verbose: false }))
-						.then(({ data }) => {
-							waitDone()
-							console.log(success('JSON Key successfully generated. Safely store the following credentials in a json file.'))
-							console.log(' ')
-							console.log(JSON.stringify(data, null, '  '))
-							console.log(' ')
-						})
-						.catch(e => {
-							waitDone()
-							const er = JSON.parse(e.message)
-							if (er.code == 429 && er.message && er.message.toLowerCase().indexOf('maximum number of keys on account reached') >= 0) {
-								console.log(error('You\'ve reached the maximum number of keys you can add to a service account.'))
-								console.log(info('To add a new JSON key to this service account, please delete an existing private key.'))
-								console.log(info(`To delete an existing key, run ${cmd('neap rm')}`))
-							} else 
-								throw e
-						})
-				}
-			})
-		}
-	})
-})
 
 const _configureCronSchedule = () => Promise.resolve(null)
 	.then(() => {
@@ -812,11 +731,19 @@ const _enterEmail = (q, r, options={}) => askQuestion(question(q)).then(answer =
 	else if (!answer) {
 		console.log(error(r))
 		return _enterEmail(q, r, options)
-	} else if (validate.email(answer))
+	} else if (validate.email(answer)) {
+		if (options.blacklist && options.blacklist.length > 0) {
+			const email = answer.toLowerCase().trim()
+			if (options.blacklist.some(e => e && e.toLowerCase().trim() == email)) {
+				console.log(error('This email is already used by an existing Collaborator'))
+				return _enterEmail(q, r, options)
+			}
+		}
 		return answer
+	}
 	else {
 		console.log(error('Invalid email.'))
-		return _enterEmail('Enter a valid email: ', 'An email is required to invite a new Collaborator.', options)
+		return _enterEmail(q, r, options)
 	}
 })
 

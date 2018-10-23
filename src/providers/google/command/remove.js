@@ -11,7 +11,7 @@
 const path = require('path')
 const gcp = require('../gcp')
 const utils = require('../utils')
-const { bold, wait, error, promptList, askQuestion, question, success, displayTable, info } = require('../../../utils/console')
+const { bold, wait, error, promptList, askQuestion, question, success, displayTable, info, searchAnswer } = require('../../../utils/console')
 const { obj: { merge }, file, collection } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
@@ -31,7 +31,7 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 					{ name: ' 3. Custom Domain', value: 'domain' },
 					{ name: ' 4. Cron Job', value: 'cron' },
 					{ name: ' 5. Task Queue', value: 'queue' },
-					{ name: ' 6. Service Account Key', value: 'service-account-key' },
+					{ name: ' 6. Access', value: 'access' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -181,89 +181,26 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 										}
 									})
 							})
-					else if (answer == 'service-account-key') 
+					else if (answer == 'access') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
-								return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
-									waitDone()
-									const title = `Service Accounts For Project ${projectId}`
-									console.log(`\nService Accounts For Project ${bold(projectId)}`)
-									console.log(collection.seed(title.length).map(() => '=').join(''))
-									console.log(' ')
-									const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
-									if (svcAccountsWithRoles.length == 0)
-										console.log('   No Service Accounts found\n')
-									else {
-										displayTable(svcAccountsWithRoles.reduce((acc, a, idx) => {
-											const [ role_01, ...roles ] = a.roles
-											const [ key_01, ...keys ] = a.keys
-											const rolesAndKeys = collection.merge(roles, keys)
-											const rCount = rolesAndKeys[0].length
-											acc.push({
-												' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
-												name: a.displayName,
-												accountId: a.email.split('@')[0],
-												roles: role_01.replace('roles/', ''),
-												'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
-											})
-											rolesAndKeys[0].forEach((r, idx) => acc.push({
-												' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
-												name: '',
-												accountId: '',
-												roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
-												'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
-											}))
-											return acc
-										}, []), { 
-											indent: '   ', 
-											line: cells => cells[0].trim().match(/^\+/), 
-											format: cell => {
-												const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
-												if (rm) {
-													const r = rm.replace(/(-|\+)/, ' ')
-													return cell.replace(rm, r)
-												}
-												else
-													return cell
-											}
-										})
-										console.log(' ')
+								const choices = [
+									{ name: `I want to decrease access for a ${bold('Collaborator')} to limit how he/she manages my Cloud`, value: 'user' },
+									{ name: `I want to decrease access for an ${bold('Agent')} to limit how it uses my Cloud (e.g., adding files to my Storage)`, value: 'agent' }
+								]
 
-										const keysOptions = svcAccountsWithRoles.reduce((acc, a) => {
-											const header = `${a.displayName} - ${a.email.split('@')[0]}`
-											if (a.keys && a.keys.length) {
-												const l = acc.length
-												acc.push(...a.keys.map(({ id }, idx) => ({ name: ` ${bold(l+idx+1)}. ${header} - ${id}`, value: l+idx, email: a.email, id })))
-											}
-											return acc
-										}, [])
-
-										return promptList({ message: 'Which private key do you want to delete? ', choices: keysOptions, separator: false }).then(answer => {
-											if (answer >= 0) {
-												const { email, id } = keysOptions.find(x => x.value == answer)
-												waitDone = wait(`Deleting private key ${bold(id)} in project ${bold(projectId)}...`)
-												return gcp.project.serviceAccount.key.delete(projectId, email, id, token, options)
-													.then(() => {
-														waitDone()
-														console.log(success('Private key successfully deleted'))
-														console.log(' ')
-													})
-													.catch(e => {
-														waitDone()
-														const er = JSON.parse(e.message)
-														if (er.code == 400 && er.message && er.message.toLowerCase().indexOf('request contains an invalid argument') >= 0) {
-															console.log(error('Oops, it seems that this key is already inactive.'))
-															console.log(info('This is a problem we\'re aware of and we\'re working on fixing it.'))
-															console.log(info('Thanks a lot for your patience. We love you!'))
-														} else 
-															throw e
-													})
-											}
-										})
-									}
+								return promptList({ message: 'What type of access do you want to change? ', choices, separator: false }).then(answer => {
+									return { projectId, token, choice: answer }
 								})
+							})
+							.then(({ projectId, token, choice }) => {
+								if (!choice)
+									return
+								else if (choice == 'user')
+									return _manageUsers(projectId, token, waitDone, options)
+								else 
+									return _manageServiceAccount(projectId, token, waitDone, options)
 							})
 					else if (answer == 'account')
 						return utils.account.choose(merge(options, { skipProjectSelection: true, skipAppEngineCheck: true })).then(() => removeStuffs(options))
@@ -277,6 +214,274 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 			})
 	})
 	.then(() => removeStuffs(merge(options, { question: 'What else do you want to delete?' })))
+
+const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	waitDone = wait(`Listing Collaborators for project ${bold(projectId)}`)
+	return gcp.project.user.list(projectId, token, options)
+		.then(({ data }) => {
+			waitDone()
+			const title = `Collaborators For Project ${projectId}`
+			console.log(`\nCollaborators For Project ${bold(projectId)}`)
+			console.log(collection.seed(title.length).map(() => '=').join(''))
+			console.log(' ')
+			data = data || []
+			if (data.length == 0)
+				console.log('   No Collaborators found\n')
+			else {
+				displayTable(data.reduce((acc, a, idx) => {
+					const [ role_01='', ...roles ] = a.roles || []
+					const rCount = roles.length
+					acc.push({
+						' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+						name: a.user,
+						roles: role_01.replace('roles/', '') || 'No roles'
+					})
+					roles.forEach((r, idx) => acc.push({
+						' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+						name: '',
+						roles: (roles[idx] || '').replace('roles/', '')
+					}))
+					return acc
+				}, []), { // All the following is to gronk an array 
+					indent: '   ', 
+					line: cells => cells[0].trim().match(/^\+/), 
+					format: cell => {
+						const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+						if (rm) {
+							const r = rm.replace(/(-|\+)/, ' ')
+							return cell.replace(rm, r)
+						}
+						else
+							return cell
+					}
+				})
+				console.log('\n')
+
+				const choices = data.map(d => ({ name: d.user, value: d.user }))
+				return promptList({ message: 'Which Collaborator do you want to remove?', choices, separator: false }).then(answer => {
+					if (!answer)
+						return 
+					return askQuestion(question(`Are you sure you want to remove ${bold(answer)} as a Collaborators (Y/n) ? `)).then(yes => {
+						if (yes == 'n')
+							return		
+
+						waitDone = wait(`Removing a new Collaborator to project ${bold(projectId)}...`)
+						return gcp.project.user.delete(projectId, answer, token, options)
+							.then(() => {
+								waitDone()
+								console.log(success(`New Collaborator successfully removed from project ${bold(projectId)}\n`))
+							})
+					})
+				})
+			}
+		})
+})
+
+const _manageServiceAccount = (projectId, token, waitDone, options) => _listServiceAccount(projectId, token, waitDone, options).then(svcAccounts => {
+	if (!svcAccounts)
+		return 
+
+	const choices = [
+		{ name: 'Remove a service account', value: 'account' },
+		{ name: 'Remove roles from a service account', value: 'role' },
+		{ name: 'Disable a service account JSON key', value: 'key' }
+	]
+
+	return promptList({ message: 'What do want to do: ', choices, separator: false }).then(answer => {
+		return { projectId, token, choice: answer }
+	})
+		.then(({ projectId, token, choice }) => {
+			if (!choice)
+				return null
+
+			if (choice == 'key')
+				return _removeJsonKeyToServiceAccount(projectId, token, waitDone, svcAccounts, options)
+			else if (choice == 'role') 
+				return _removeRolesToServiceAccount(projectId, token, waitDone, svcAccounts, options)
+			else
+				return _removeServiceAccount(projectId, token, waitDone, svcAccounts, options)
+		})
+})
+
+const _removeServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
+	if (!svcAccounts)
+		return 
+	
+	const keyOptions = svcAccounts.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+	}))
+
+	return promptList({ message: 'Which service account do you want to delete? ', choices: keyOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const v = svcAccounts[answer*1]
+			return v.email
+		} 
+		return false 
+	}).then(email => {
+		if (email) {
+			return askQuestion(question(`Are you sure you want to delete service account ${bold(email)} (Y/n) ? `)).then(yes => {
+				if (yes == 'n')
+					return						
+				
+				waitDone = wait(`Deleting service account ${bold(email)} from project ${bold(projectId)}`)
+				return gcp.project.serviceAccount.delete(projectId, email, token, options).then(() => {
+					waitDone()
+					console.log(success(`Service account ${bold(email)} successfully deleted from project ${bold(projectId)}`))
+				})
+			})
+		}
+	})
+})
+
+const _removeRolesToServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
+	if (!svcAccounts)
+		return 
+
+	const keyOptions = svcAccounts.map((a,idx) => ({
+		name: ` ${bold(idx+1)}. ${a.displayName} - ${a.email.split('@')[0]}`, value: idx
+	}))
+
+	let serviceAccountEmail
+	return promptList({ message: 'Remove roles from one of the following service accounts: ', choices: keyOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const v = svcAccounts[answer*1]
+			serviceAccountEmail = v.email
+			if (!v.roles || v.roles.length == 0) {
+				console.log(info('The service account you\'ve choosen has no roles'))
+				return false
+			}
+			return _chooseAccountRoles(v.roles, { required: true })
+		}
+		return false 
+	}).then(roles => {
+		if (roles) {
+			return askQuestion(question(`Are you sure you want to remove ${roles.length} role${roles.length > 1 ? 's' : ''} (Y/n) ? `)).then(yes => {
+				if (yes == 'n')
+					return						
+				
+				waitDone = wait(`Removing roles from ${bold(serviceAccountEmail)} in project ${bold(projectId)}`)
+				return gcp.project.serviceAccount.roles.delete(projectId, serviceAccountEmail, roles, token, options).then(() => {
+					waitDone()
+					console.log(success(`Roles successfully removed from ${bold(serviceAccountEmail)} in project ${bold(projectId)}`))
+				})
+			})
+		}
+	})
+})
+
+const _removeJsonKeyToServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
+	if (!svcAccounts)
+		return 
+	
+	const keysOptions = svcAccounts.reduce((acc, a) => {
+		const header = `${a.displayName} - ${a.email.split('@')[0]}`
+		if (a.keys && a.keys.length) {
+			const l = acc.length
+			acc.push(...a.keys.map(({ id }, idx) => ({ name: ` ${bold(l+idx+1)}. ${header} - ${id}`, value: l+idx, email: a.email, id })))
+		}
+		return acc
+	}, [])
+
+	return promptList({ message: 'Which private key do you want to delete? ', choices: keysOptions, separator: false }).then(answer => {
+		if (answer >= 0) {
+			const { email, id } = keysOptions.find(x => x.value == answer)
+			waitDone = wait(`Deleting private key ${bold(id)} in project ${bold(projectId)}...`)
+			return gcp.project.serviceAccount.key.delete(projectId, email, id, token, options)
+				.then(() => {
+					waitDone()
+					console.log(success('Private key successfully deleted'))
+					console.log(' ')
+				})
+				.catch(e => {
+					waitDone()
+					const er = JSON.parse(e.message)
+					if (er.code == 400 && er.message && er.message.toLowerCase().indexOf('request contains an invalid argument') >= 0) {
+						console.log(error('Oops, it seems that this key is already inactive.'))
+						console.log(info('This is a problem we\'re aware of and we\'re working on fixing it.'))
+						console.log(info('Thanks a lot for your patience. We love you!'))
+					} else 
+						throw e
+				})
+		}
+	})
+})
+
+const _listServiceAccount = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
+	waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
+	return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
+		waitDone()
+		const title = `Service Accounts For Project ${projectId}`
+		console.log(`\nService Accounts For Project ${bold(projectId)}`)
+		console.log(collection.seed(title.length).map(() => '=').join(''))
+		console.log(' ')
+		svcAccounts = svcAccounts || []
+		if (svcAccounts.length == 0)
+			console.log('   No Service Accounts found\n')
+		else {
+			displayTable(svcAccounts.reduce((acc, a, idx) => {
+				const [ role_01='', ...roles ] = a.roles || []
+				const [ key_01='', ...keys ] = a.keys || []
+				const rolesAndKeys = collection.merge(roles, keys)
+				const rCount = rolesAndKeys[0].length
+				acc.push({
+					' #': `${rCount > 0 ? '-' : '+'}${idx + 1}`, // a '+' means we should add a separator 
+					name: a.displayName,
+					accountId: a.email.split('@')[0],
+					roles: role_01.replace('roles/', '') || 'No roles',
+					'keys & their creation date': key_01 ? `01. ${key_01.id.slice(0,7)}...   ${key_01.created}` : 'No keys'
+				})
+				rolesAndKeys[0].forEach((r, idx) => acc.push({
+					' #': `${idx+1 < rCount ? '-' : '+'}`, // a '+' means we should add a separator 
+					name: '',
+					accountId: '',
+					roles: (rolesAndKeys[0][idx] || '').replace('roles/', ''),
+					'keys & their creation date': rolesAndKeys[1][idx] ? `${idx+2 < 10 ? `0${idx+2}` : idx+2}. ${rolesAndKeys[1][idx].id.slice(0,7)}...   ${rolesAndKeys[1][idx].created}` : '',
+				}))
+				return acc
+			}, []), { // All the following is to gronk an array 
+				indent: '   ', 
+				line: cells => cells[0].trim().match(/^\+/), 
+				format: cell => {
+					const rm = ((cell || '').match(/^\s*(\+|-)/) || [])[0]
+					if (rm) {
+						const r = rm.replace(/(-|\+)/, ' ')
+						return cell.replace(rm, r)
+					}
+					else
+						return cell
+				}
+			})
+			console.log(' ')
+			return svcAccounts
+		}
+	})
+})
+
+/**
+ * [description]
+ * @param  {Boolean} options.required 	[description]
+ * @return {[type]}         			[description]
+ */
+const _chooseAccountRoles = (roles, options={}) => {
+	const answers = []
+	return searchAnswer('Select a roles: ', (roles || []).map(r => r.replace('roles/', '')), (input='', rs) => rs.filter(r => r && r.toLowerCase().indexOf(input.toLowerCase().trim()) >= 0)).then(answer => {
+		if (answer)
+			answers.push(`roles/${answer}`)
+
+		return askQuestion(question('Do you want to add another role (Y/n) ? ')).then(yes => {
+			if (yes == 'n') {
+				if (options.required && answers.length == 0)
+					console.log(error('You must add at least one role to continue'))
+				else
+					return answers
+			}
+			return _chooseAccountRoles(roles.filter(r => !answers.some(a => a == r)), options).then(otherRoles => {
+				const totals = [...answers, ...(otherRoles || [])]
+				return collection.uniq(totals)
+			})
+		})
+	})
+}
 
 const _chooseId = (q, choices) => askQuestion(question(q))
 	.then(answer => {

@@ -1624,6 +1624,12 @@ const addRolesToServiceAccount = (projectId, serviceEmail, roles, token, options
 const addRolesToUser = (projectId, userEmail, roles, token, options={}) => 
 	_addRoles(projectId, userEmail, roles, token, objectHelper.merge(options, { serviceAccount: false }))
 
+const removeRolesFromServiceAccount = (projectId, serviceEmail, roles, token, options={}) => 
+	_removeRoles(projectId, serviceEmail, roles, token, objectHelper.merge(options, { serviceAccount: true }))
+
+const removeRolesFromUser = (projectId, userEmail, roles, token, options={}) => 
+	_removeRoles(projectId, userEmail, roles, token, objectHelper.merge(options, { serviceAccount: false }))
+
 const _addRoles = (projectId, serviceEmail, roles, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
 	_validateRequiredParams({ projectId, serviceEmail, roles: roles && roles.length > 0 ? true : null, token })
 	_showDebug(`Add roles to service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
@@ -1639,6 +1645,34 @@ const _addRoles = (projectId, serviceEmail, roles, token, options={}) => getProj
 		} else 
 			policy.bindings.push({ role, members: [member] })
 	})
+
+	const body = JSON.stringify({ policy }, null, ' ')
+
+	return fetch.post(`${PROJECT_URL(projectId)}:setIamPolicy`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, body, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
+const _removeRoles = (projectId, serviceEmail, roles, token, options={}) => getProjectIAMpolicies(projectId, token, options).then(({ data: policy }) => {
+	_validateRequiredParams({ projectId, serviceEmail, token })
+	_showDebug(`Add roles to service account in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const member = options.serviceAccount ? `serviceAccount:${serviceEmail}` : `user:${serviceEmail}`
+	policy = policy || {}
+	policy.bindings = policy.bindings || []
+	
+	if (!roles)
+		policy.bindings.forEach(b => {
+			b.members = (b.members || []).filter(m => m != member)
+		})
+	else
+		roles.forEach(role => {
+			const existingBinding = policy.bindings.find(x => x.role == role)
+			if (existingBinding && existingBinding.members && existingBinding.members.some(m => m == member)) 
+				existingBinding.members = (existingBinding.members || []).filter(m => m != member)
+		})
 
 	const body = JSON.stringify({ policy }, null, ' ')
 
@@ -2017,12 +2051,17 @@ module.exports = {
 			},
 			roles: {
 				'get': getAllAccountRoles,
-				add: addRolesToServiceAccount
+				add: addRolesToServiceAccount,
+				delete: removeRolesFromServiceAccount
 			}
 		},
 		user: {
 			list: listUsers,
-			create: addRolesToUser
+			create: addRolesToUser,
+			delete: (projectId, serviceEmail, token, options={}) => removeRolesFromUser(projectId, serviceEmail, null, token, options),
+			roles: {
+				delete: removeRolesFromUser
+			}
 		},
 		iamPolicies: {
 			'get': getProjectIAMpolicies
