@@ -13,7 +13,7 @@
 'use strict'
 
 const program = require('commander')
-const { deploy, list, configure, clean, manage, domain, remove, add } = require('./src')
+const { deploy, list, configure, clean, manage, remove, add } = require('./src')
 const { bold, cyan } = require('./src/utils/console')
 
 program
@@ -56,16 +56,6 @@ program
 	.action((opt1, opt2, options) => {
 		const { projectPath, provider } = _getParams(opt1, opt2)
 		return list(provider, { debug: options.debug, global: options.global, projectPath: projectPath, env: options.env }).then(() => process.exit())
-	})
-
-program
-	.command('dn [opt1]')
-	.usage('. This command helps manage custom domains in your Google Cloud Platform project.')
-	.option('-d, --debug', 'Show debugging messages.')
-	.option('-e, --env <env>', 'Choose the \'hosting\' settings defined in the app.<env>.json file.')
-	.action((opt1, options) => {
-		const { projectPath } = _getParams(opt1)
-		return domain({ debug: options.debug, projectPath: projectPath, env: options.env }).then(() => process.exit())
 	})
 
 program

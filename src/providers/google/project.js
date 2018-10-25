@@ -7,16 +7,13 @@
  * permission of neap pty ltd nic@neap.co.
  */
 
+const path = require('path')
 const { error, info, link, promptList, bold, debugInfo, askQuestion, question, wait, success, warn } = require('../../utils/console')
 const getToken = require('./getToken')
 const authConfig = require('../../utils/authConfig')
 const gcp = require('./gcp')
 const { identity, promise, obj: { merge } } = require('../../utils')
-const path = require('path')
-
-const CLOUD_TASK_SERVICE_API = 'cloudtasks.googleapis.com'
-const FLEX_SERVICE_API = 'appengineflex.googleapis.com'
-const IAM_SERVICE_API = 'iam.googleapis.com'
+const apis = require('./api')
 
 const getProjects = (options={ debug:false, show:false }) => getToken({ debug: (options || {}).debug }).then(token => {
 	const { debug, show } = options || {}
@@ -167,14 +164,11 @@ const createNewProject = (token, options={}) => {
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
 				// 4. Enable Cloud Task API
 				.then(projectId => {
-					waitDone = wait(`Enabling the following APIs: ${bold('Cloud Task API')}, ${bold('App Engine Flexible API')}, ${bold('IAM API')}`)
-					return gcp.serviceAPI.enable(CLOUD_TASK_SERVICE_API, projectId, token, merge(options, { confirm: true }))
-						.then(() => gcp.serviceAPI.enable(FLEX_SERVICE_API, projectId, token, merge(options, { confirm: true })))
-						.then(() => gcp.serviceAPI.enable(IAM_SERVICE_API, projectId, token, merge(options, { confirm: true })))
-						.then(() => {
-							waitDone()
-							return projectId
-						})
+					waitDone = wait('Enabling the Google APIs')
+					return apis.enable.all(projectId, token, options).then(() => {
+						waitDone()
+						return projectId
+					})
 				})
 				.then(projectId => {
 					if (!options.createAppEngine)

@@ -20,6 +20,7 @@ const { obj: { merge }, file, collection, timezone, validate } = require('../../
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
+const api = require('../api')
 
 const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
@@ -36,6 +37,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 4. Cron Job', value: 'cron' },
 					{ name: ' 5. Task Queue', value: 'queue' },
 					{ name: ' 6. Access', value: 'access' },
+					{ name: ' 7. Google APIs', value: 'apis' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -50,6 +52,24 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					} 
 					else if (answer == 'project')
 						return projectHelper.create(token, merge(options, { createAppEngine: true, noExit: true }))
+					else if (answer == 'apis')
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
+							.then(({ projectId, token }) => _selectGoogleApis().then(apis => {
+								if (!apis)
+									return 
+
+								return askQuestion(question(`Are you sure you want to enable ${apis == 'all' ? 'all APIs' : `${apis.length} API${apis.length == 1 ? '' : 's'}`} in project ${answer} (Y/n) ? `)).then(yes => {
+									if (yes == 'n')
+										return 
+									
+									waitDone = wait('Enabling all apis')
+									return api.enable(projectId, apis, token, options).then(() => {
+										waitDone()
+										console.log(success(`${apis == 'all' ? 'All APIs' : `${apis.length} API${apis.length == 1 ? '' : 's'}`} enabled in project ${bold(answer)}`))
+									})
+								})
+							}))
 					else if (answer == 'cron') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
@@ -1108,6 +1128,33 @@ const _getAppJsonFiles = (options={}) => file.getJsonFiles(options.projectPath, 
 	.catch(() => [])
 	.then(jsonFiles => jsonFiles.map(x => path.basename(x)).filter(x => x.match(/^app\./) && (x.split('.').length == 3 || x.split('.').length == 2)))
 
+const _selectGoogleApis = apis => apis ? Promise.resolve(apis) : api.get()
+	.then(apis => {
+		const answers = []
+		const choices = [{ name: ' 1. all', value: 'all' }, ...apis.map((a,idx) => ({ name: ` ${idx+2}. ${a}`, value: a }))]
+		return promptList({ message: 'Which Google API do you want to enable? ', choices, separator: false }).then(answer => {
+			if (!answer)
+				return 
+			else if (answer == 'all')
+				return answer 
+
+			answers.push(answer)
+			return askQuestion(question('Do you want to add another API (Y/n) ? ')).then(yes => {
+				if (yes == 'n')
+					return answers
+
+				const rest = apis.filter(a => a != answer)
+				return _selectGoogleApis(rest).then(selectedApis => {
+					if (!selectedApis)
+						return answers
+					else if (selectedApis == 'all')
+						return selectedApis
+
+					return [...answers, ...selectedApis]
+				})
+			})
+		})
+	})
 
 module.exports = {
 	add: addStuffs,
