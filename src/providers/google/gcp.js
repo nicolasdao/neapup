@@ -11,6 +11,7 @@
 // 	- Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
 // 	- Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
 // 	- Google Bucket IAM: https://cloud.google.com/storage/docs/json_api/v1/buckets/setIamPolicy
+// 	- Google Bucket API: https://cloud.google.com/storage/docs/json_api/v1/buckets
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
@@ -31,7 +32,7 @@ const BILLING_PAGE = projectId => `https://console.cloud.google.com/billing/link
 const BILLING_INFO_URL = projectId => `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
 // BUCKET
 const BUCKET_FILE_URL = (bucketName, filepath) => `https://www.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}${ filepath ? `/o/${encodeURIComponent(filepath)}` : ''}`
-const BUCKET_CREATE_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
+const BUCKET_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
 const BUCKET_UPLOAD_URL = (bucketName, fileName, projectId) => `https://www.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucketName)}/o?uploadType=media&name=${encodeURIComponent(fileName)}&project=${encodeURIComponent(projectId)}`
 // APP ENGINE
 const APP_ENG_DETAILS_URL = projectId => `https://appengine.googleapis.com/v1/apps/${projectId}`
@@ -59,6 +60,9 @@ const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://
 // IAM API
 const IAM_SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${encodeURIComponent(serviceEmail)}` : ''}`
 const IAM_SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${IAM_SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys${keyId ? `/${keyId}` : ''}`
+// BIGQUERY API
+const BIGQUERY_DB_URL = projectId => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets`
+const BIGQUERY_TABLES_URL = (projectId, db) => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets/${db}/tables`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -543,10 +547,10 @@ const getBucketFileContent = (bucket, filepath, token, options={}) => {
 
 const createBucket = (name, projectId, token, options={ debug:false, verbose:true }) => Promise.resolve(null).then(() => {
 	const opts = Object.assign({ debug:false, verbose:true }, options)
-	_validateRequiredParams({ name, token })
+	_validateRequiredParams({ projectId, name, token })
 	_showDebug(`Creating a new bucket called ${bold(name)} in Google Cloud Platform's project ${bold(projectId)}.`, opts)
 
-	return fetch.post(BUCKET_CREATE_URL(projectId), {
+	return fetch.post(BUCKET_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify({ name }), opts)
@@ -555,6 +559,28 @@ const createBucket = (name, projectId, token, options={ debug:false, verbose:tru
 				_showDebug(`Bucket ${bold(name)} already exists.`, opts)
 			return res
 		})
+})
+
+const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then(() => {
+	const opts = Object.assign({ debug:false, verbose:true }, options)
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`List all buckets in Google Cloud Platform's project ${bold(projectId)}.`, opts)
+
+	return fetch.get(`${BUCKET_URL(projectId)}${options.cursor ? `?pageToken=${options.cursor}` : ''}`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, opts).then(({ status, data }) => {
+		const nextPageToken = (data || {}).nextPageToken
+		const buckets = (data || {}).items || []
+		if (nextPageToken) {
+			const cursor = nextPageToken
+			return listBuckets(projectId, token, objectHelper.merge(options, { cursor })).then(({ data }) => ({
+				status,
+				data: [...buckets, ...((data || {}).items || [])] 
+			}))
+		} else
+			return { status, data: buckets }
+	})
 })
 
 const CONTENT_TYPES = { 'zip': 'application/zip', 'json': 'application/json' }
@@ -1448,6 +1474,106 @@ const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(p
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											START - BIGQUERY APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const listBigQueryDBs = (projectId, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, token })
+	_showDebug(`Requesting all DBs from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.get(BIGQUERY_DB_URL(projectId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
+		.then(res => ({ status: res.status, data: (res.data || {}).datasets || [] }))
+})
+
+const listBigQueryTables = (projectId, db, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, db, token })
+	_showDebug(`Requesting all DB's tables from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.get(BIGQUERY_TABLES_URL(projectId, db), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
+		.then(res => ({ status: res.status, data: (res.data || {}).tables || [] }))
+})
+
+// // This method is a bit of a pain as it does not provide a rate config as granular as the legacy 'updateQueue' API
+// /**
+//  * [description]
+//  * @param  {[type]} projectId               [description]
+//  * @param  {[type]} service                 [description]
+//  * @param  {[type]} queue                   [description]
+//  * @param  {Number} maxDispatchesPerSecond  Accepts decimal to. For example, 0.1 means that the maximum rate is to process the queue every 10 sec, i.e., 6/m (6 times per minutes) 
+//  * @param  {[type]} maxConcurrentDispatches [description]
+//  * @param  {[type]} token                   [description]
+//  * @param  {Object} options                 [description]
+//  * @return {[type]}                         [description]
+//  */
+// const createTaskQueue = (projectId, service, queue, maxDispatchesPerSecond, maxConcurrentDispatches, token, options={}) => getAppDetails(projectId, token, options)
+// 	.then(({ data: { locationId: projectLocationId } }) => {
+// 		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+
+// 		if (!locationId)
+// 			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+
+// 		_validateRequiredParams({ projectId, queue, locationId, token })
+// 		_showDebug(`Creating a new queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+// 		return fetch.post(TASK_QUEUE_URL(projectId, locationId), {
+// 			'Content-Type': 'application/json',
+// 			Authorization: `Bearer ${token}`
+// 		}, JSON.stringify({
+// 			name: `projects/${projectId}/locations/${locationId}/queues/${queue}`,
+// 			rateLimits: {
+// 				maxDispatchesPerSecond: maxDispatchesPerSecond || 500,
+// 				maxConcurrentDispatches: maxConcurrentDispatches || 1000
+// 			},
+// 			appEngineHttpQueue: {
+// 				appEngineRoutingOverride: {
+// 					service: service || 'default'
+// 				}
+// 			}
+// 		}), options)
+// 			.then(res => ({ status: res.status, data: res.data || {} }))
+// 	})
+
+// const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(projectId, token, options)
+// 	.then(({ data: { locationId: projectLocationId } }) => {
+// 		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+
+// 		if (!locationId)
+// 			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+
+// 		_validateRequiredParams({ projectId, queue, locationId, token })
+// 		_showDebug(`Deleting a queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+// 		return fetch.delete(TASK_QUEUE_URL(projectId, locationId, queue), {
+// 			'Content-Type': 'application/json',
+// 			Authorization: `Bearer ${token}`
+// 		}, null, options)
+// 			.then(res => ({ status: res.status, data: res.data || {} }))
+// 	})
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											END - BIGQUERY APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////
@@ -2070,9 +2196,16 @@ module.exports = {
 	},
 	bucket: {
 		'get': getBucketFileContent,
+		list: listBuckets,
 		getInfo: getBucketFile,
 		create: createBucket,
 		uploadFile: uploadFileToBucket
+	},
+	bigQuery: {
+		list: listBigQueryDBs,
+		table: {
+			list: listBigQueryTables
+		}
 	},
 	app: {
 		'get': getAppDetails,

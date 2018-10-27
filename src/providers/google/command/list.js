@@ -30,7 +30,9 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 					{ name: ' 3. Custom Domains', value: 'domains' },
 					{ name: ' 4. Cron Jobs', value: 'cron' },
 					{ name: ' 5. Task Queues', value: 'queue' },
-					{ name: ' 6. Accesses', value: 'access' },
+					{ name: ' 6. Buckets', value: 'bucket' },
+					{ name: ' 7. BigQuery', value: 'bigquery' },
+					{ name: ' 8. Accesses', value: 'access' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -77,8 +79,8 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 								waitDone = wait(`Getting Task Queue config for project ${bold(projectId)}`)
 								return gcp.app.queue.get(projectId, token, options).then(({ data: queues }) => {
 									waitDone()
-									const title = `Task Queues For Project ${projectId}`
-									console.log(`\nTask Queues For Project ${bold(projectId)}`)
+									const title = `Task Queues In Project ${projectId}`
+									console.log(`\nTask Queues In Project ${bold(projectId)}`)
 									console.log(collection.seed(title.length).map(() => '=').join(''))
 									console.log(' ')
 									if (!queues || queues.length == 0)
@@ -121,8 +123,8 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 									return gcp.project.user.list(projectId, token, options)
 										.then(({ data }) => {
 											waitDone()
-											const title = `Collaborators For Project ${projectId}`
-											console.log(`\nCollaborators For Project ${bold(projectId)}`)
+											const title = `Collaborators In Project ${projectId}`
+											console.log(`\nCollaborators In Project ${bold(projectId)}`)
 											console.log(collection.seed(title.length).map(() => '=').join(''))
 											console.log(' ')
 											data = data || []
@@ -163,8 +165,8 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 									waitDone = wait(`Getting service accounts for project ${bold(projectId)}`)
 									return gcp.project.serviceAccount.list(projectId, token, merge(options, { includeKeys: true })).then(({ data: svcAccounts }) => {
 										waitDone()
-										const title = `Service Accounts For Project ${projectId}`
-										console.log(`\nService Accounts For Project ${bold(projectId)}`)
+										const title = `Service Accounts In Project ${projectId}`
+										console.log(`\nService Accounts In Project ${bold(projectId)}`)
 										console.log(collection.seed(title.length).map(() => '=').join(''))
 										console.log(' ')
 										const svcAccountsWithRoles = (svcAccounts || []).filter(a => a.roles && a.roles.length > 0)
@@ -208,6 +210,110 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 										}
 									})
 								}
+							})
+					else if (answer == 'bigquery') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading BigQuery databases info in project ${bold(projectId)}`)
+								return gcp.bigQuery.list(projectId, token, options).then(({ data: dbs }) => {
+									waitDone()
+									const title = `BiqQuery Databases In Project ${projectId}`
+									console.log(`\nBiqQuery Databases In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!dbs || dbs.length == 0) {
+										console.log('   No Databases found\n')
+										console.log(' ')
+										return
+									}
+
+									displayTable(dbs.map((c,idx) => ({
+										id: idx + 1,
+										name: c.id.split(':').slice(-1)[0],
+										location: c.location
+									})), { indent: '   ' })
+									console.log(' ')
+
+									const choices = dbs.map((db,idx) => ({ name: ` ${bold(idx+1)}. ${bold(db.id.split(':').slice(-1)[0])}`, value: db.id.split(':').slice(-1)[0] }))
+									return promptList({ message: 'Select a DB to list its tables:', choices, separator: false }).then(answer => {
+										if (!answer)
+											return 
+										waitDone = wait(`Loading all tables in DB ${bold(answer)} in project ${bold(projectId)}`)
+										return gcp.bigQuery.table.list(projectId, answer, token, options).then(({ data }) => {
+											waitDone()
+											const title = `Tables In DB ${answer} In Project ${projectId}`
+											console.log(`\nTables In DB ${bold(answer)} In Project ${bold(projectId)}`)
+											console.log(collection.seed(title.length).map(() => '=').join(''))
+											console.log(' ')
+											if (data.length == 0) {
+												console.log('   No Tables found\n')
+												console.log(' ')
+												return
+											}
+
+											displayTable(data.map((c,idx) => ({
+												id: idx + 1,
+												name: c.id.split('.').slice(-1)[0],
+												created: c.creationTime
+											})), { indent: '   ' })
+											console.log(' ')
+										})
+									})
+								})
+							})
+					else if (answer == 'bucket') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, listStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading Buckets info in project ${bold(projectId)}`)
+								return gcp.bucket.list(projectId, token, options).then(({ data: buckets }) => {
+									waitDone()
+									const title = `Buckets In Project ${projectId}`
+									console.log(`\nBuckets In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!buckets || buckets.length == 0)
+										console.log('   No Buckets found\n')
+									else {
+										const nowDeployments = buckets.filter(b => b.id.indexOf('now-deployments-') == 0) // legacy
+										const webfuncDeployments = buckets.filter(b => b.id.indexOf('webfunc-deployment-') == 0) // legacy
+										const neapupDeployments = buckets.filter(b => b.id.indexOf('neapup-v') == 0)
+										const normalBuckets = buckets.filter(b => {
+											return b.id.indexOf('now-deployments-') != 0
+											&& b.id.indexOf('webfunc-deployment-') != 0
+											&& b.id.indexOf('neapup-v') != 0
+										})
+										if (nowDeployments.length > 0) {
+											let lastDeployment = nowDeployments.slice(-1)[0]
+											lastDeployment.id = 'now-deployments-xxx'
+											lastDeployment.deploymentsCount = nowDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (webfuncDeployments.length > 0) {
+											let lastDeployment = webfuncDeployments.slice(-1)[0]
+											lastDeployment.id = 'webfunc-deployments-YYYYMMDD-hhmmss-xxxxxxxxx'
+											lastDeployment.deploymentsCount = webfuncDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (neapupDeployments.length > 0) {
+											let lastDeployment = neapupDeployments.slice(-1)[0]
+											lastDeployment.id = 'neapup-vYYYYMMDD-hhmmss-x'
+											lastDeployment.deploymentsCount = neapupDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										displayTable(normalBuckets.map((c, idx) => ({
+											id: idx + 1,
+											name: c.id,
+											location: c.location,
+											type: c.storageClass, 
+											created: c.timeCreated,
+											updated: c.updated,
+											'total similar': c.deploymentsCount || 'N.A.' 
+										})), { indent: '   ' })
+									}
+									console.log(' ')
+								})
 							})
 					else
 						return _listProjectDetails(activeProjectIds, token, options)
