@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.29"></a>
+## [0.22.29](https://gitlab.com/neap/neap-manager/compare/v0.22.28...v0.22.29) (2018-11-03)
+
+
+### Bug Fixes
+
+* Deploying to standard fails. 'scriptPath' must be set to auto ([3b57573](https://gitlab.com/neap/neap-manager/commit/3b57573))
+
+
+### Features
+
+* Add support for listing: BigQuery DBs and Tables + Buckets ([1c41fba](https://gitlab.com/neap/neap-manager/commit/1c41fba))
+
+
+
 <a name="0.22.28"></a>
 ## [0.22.28](https://gitlab.com/neap/neap-manager/compare/v0.22.27...v0.22.28) (2018-10-25)
 
