@@ -271,7 +271,7 @@ const zipNodejsProject = (src, options={ debug:false }) => {
 				const s = sizeMb < 0.01 ? `${(buffer.length / 1024 ).toFixed(2)}KB` : `${sizeMb}MB`
 				console.log(debugInfo(`The nodejs project located under\n${src}\nhas been successfully zipped to buffer (${s})`))
 			}
-
+			
 			return deleteFolder(tempFolder, options)
 				.then(() => ({ filesCount, buffer }))
 		})

@@ -113,20 +113,28 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 			//////////////////////////////
 			return appJsonHelper.get(options.projectPath, options)
 				.then(appJsonConfig => {
-					// 3.1. Create app.yaml for flexible environment 
+					// 2.1. Create app.yaml for flexible environment 
 					appJsonConfig = appJsonConfig || {}
 					const hostConfig = appJsonConfig.hosting || {}
 					options.costReduction = hostConfig['cost-reduction']
 					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
 					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
+					// 2.2. If the target is a standard env, then make sure that all script.scriptPath are set to 'auto'. That's
+					// 		a Google constraint
+					if (!deployingToFlex && hostConfig.handlers && hostConfig.handlers.some(x => x))
+						hostConfig.handlers.forEach(h => {
+							if (h.script && h.script.scriptPath)
+								h.script.scriptPath = 'auto'
+						})
+
 					const extraFiles = { 
 						files: [
 							{ name: 'app.yaml', content: appHostingHelper.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) },
 							{ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') }
 						]
 					} 
-					// 3.2. Check quotas for Standard env.
+					// 2.3. Check quotas for Standard env.
 					const checkQuotas = deployingToFlex || (hostConfig.ignore && hostConfig.ignore['quotas-warning'])
 						? Promise.resolve(null)
 						: Promise.resolve(null).then(() => {
@@ -155,7 +163,7 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 								})
 						})
 
-					// 3.3. Zip
+					// 2.4. Zip
 					return checkQuotas.then(() => {
 						const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
 						waitDone = wait(msg)
@@ -598,6 +606,12 @@ const _deleteAppVersions = (projectId, nbr=10, options={}) => getToken(options).
 const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 	waitDone = wait(`Deploying nodejs app to project ${bold(bucket.projectId)} under App Engine's service ${bold(service.name)} version ${bold(service.version)}`)
 	return appHostingHelper.get(options.projectPath, options).then(hostingConfig => {
+		// Complying to the App Engine constraint for standard env
+		if ((!hostingConfig.env || hostingConfig.env == 'standard') && hostingConfig.handlers && hostingConfig.handlers.some(x => x))
+			hostingConfig.handlers.forEach(h => {
+				if (h.script && h.script.scriptPath)
+					h.script.scriptPath = 'auto'
+			})
 		return gcp.app.deploy(bucket.projectId, service.name, service.version, bucket.name, zip.name, zip.filesCount, token, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
 			if (!data.operationId) {
 				const msg = 'Unexpected response. Could not determine the operationId used to check the deployment status.'
