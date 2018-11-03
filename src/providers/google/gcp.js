@@ -236,7 +236,7 @@ const getProjectBillingInfo = (projectId, token, options={ debug:false }) => Pro
  * @param  {Object} options   [description]
  * @return {[type]}           [description]
  */
-const testBillingEnabled = (projectId, token, options={ debug:false }) => Promise.resolve(null).then(() => {
+const testBillingEnabled = (projectId, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, token })
 	_showDebug('Testing if billing is enabled by creating a dummy bucket on Google Cloud Platform.', options)
 
@@ -550,16 +550,48 @@ const createBucket = (name, projectId, token, options={ debug:false, verbose:tru
 	_validateRequiredParams({ projectId, name, token })
 	_showDebug(`Creating a new bucket called ${bold(name)} in Google Cloud Platform's project ${bold(projectId)}.`, opts)
 
+	let payload = { name }
+	if (options.location)
+		payload.location = options.location
+
 	return fetch.post(BUCKET_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
-	}, JSON.stringify({ name }), opts)
+	}, JSON.stringify(payload), opts)
 		.then(res => {
 			if (res && res.status == 409)
 				_showDebug(`Bucket ${bold(name)} already exists.`, opts)
 			return res
 		})
 })
+
+const listBucketLocations = () => Promise.resolve(null).then(() => ({
+	singleRegions: [
+		{ name: 'northamerica-northeast1 (Montréal)', id: 'northamerica-northeast1' },
+		{ name: 'us-central1 (Iowa)', id: 'us-central1' },
+		{ name: 'us-east1 (South Carolina)', id: 'us-east1' },
+		{ name: 'us-east4 (Northern Virginia)', id: 'us-east4' },
+		{ name: 'us-west1 (Oregon)', id: 'us-west1' },
+		{ name: 'us-west2 (Los Angeles)', id: 'us-west2' },
+		{ name: 'southamerica-east1 (São Paulo)', id: 'southamerica-east1' },
+		{ name: 'europe-north1 (Finland)', id: 'europe-north1' },
+		{ name: 'europe-west1 (Belgium)', id: 'europe-west1' },
+		{ name: 'europe-west2 (London)', id: 'europe-west2' },
+		{ name: 'europe-west3 (Frankfurt)', id: 'europe-west3' },
+		{ name: 'europe-west4 (Netherlands)', id: 'europe-west4' },
+		{ name: 'asia-east1 (Taiwan)', id: 'asia-east1' },
+		{ name: 'asia-east2 (Hong Kong)', id: 'asia-east2' },
+		{ name: 'asia-northeast1 (Tokyo)', id: 'asia-northeast1' },
+		{ name: 'asia-south1 (Mumbai)', id: 'asia-south1' },
+		{ name: 'asia-southeast1 (Singapore)', id: 'asia-southeast1' },
+		{ name: 'australia-southeast1 (Sydney)', id: 'australia-southeast1' }
+	],
+	multiRegions: [
+		{ name: 'asia', id: 'asia' },
+		{ name: 'eu', id: 'eu' },
+		{ name: 'us', id: 'us' },
+	]
+}))
 
 const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then(() => {
 	const opts = Object.assign({ debug:false, verbose:true }, options)
@@ -2197,6 +2229,7 @@ module.exports = {
 	bucket: {
 		'get': getBucketFileContent,
 		list: listBuckets,
+		getRegions: listBucketLocations,
 		getInfo: getBucketFile,
 		create: createBucket,
 		uploadFile: uploadFileToBucket

@@ -36,6 +36,8 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 3. Routing Rule', value: 'routing' },
 					{ name: ' 4. Cron Job', value: 'cron' },
 					{ name: ' 5. Task Queue', value: 'queue' },
+					{ name: ' 6. Bucket', value: 'bucket' },
+					{ name: ' 7. BigQuery', value: 'bigquery' },
 					{ name: ' 6. Access', value: 'access' },
 					{ name: ' 7. Google APIs', value: 'apis' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
@@ -355,6 +357,88 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									return _manageUsers(projectId, token, waitDone, options)
 								else 
 									return _manageServiceAccount(projectId, token, waitDone, options)
+							})
+					else if (answer == 'bucket') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading Buckets info from project ${bold(projectId)}`)
+								return gcp.bucket.list(projectId, token, options).then(({ data: buckets }) => {
+									waitDone()
+									const title = `Buckets In Project ${projectId}`
+									console.log(`\nBuckets In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!buckets || buckets.length == 0)
+										console.log('   No Buckets found\n')
+									else {
+										const nowDeployments = buckets.filter(b => b.id.indexOf('now-deployments-') == 0) // legacy
+										const webfuncDeployments = buckets.filter(b => b.id.indexOf('webfunc-deployment-') == 0) // legacy
+										const neapupDeployments = buckets.filter(b => b.id.indexOf('neapup-v') == 0)
+										const normalBuckets = buckets.filter(b => {
+											return b.id.indexOf('now-deployments-') != 0
+											&& b.id.indexOf('webfunc-deployment-') != 0
+											&& b.id.indexOf('neapup-v') != 0
+										})
+										if (nowDeployments.length > 0) {
+											let lastDeployment = nowDeployments.slice(-1)[0]
+											lastDeployment.id = 'now-deployments-xxx'
+											lastDeployment.deploymentsCount = nowDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (webfuncDeployments.length > 0) {
+											let lastDeployment = webfuncDeployments.slice(-1)[0]
+											lastDeployment.id = 'webfunc-deployments-YYYYMMDD-hhmmss-xxxxxxxxx'
+											lastDeployment.deploymentsCount = webfuncDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (neapupDeployments.length > 0) {
+											let lastDeployment = neapupDeployments.slice(-1)[0]
+											lastDeployment.id = 'neapup-vYYYYMMDD-hhmmss-x'
+											lastDeployment.deploymentsCount = neapupDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										displayTable(normalBuckets.map((c, idx) => ({
+											id: idx + 1,
+											name: c.id,
+											location: c.location,
+											type: c.storageClass, 
+											created: c.timeCreated,
+											updated: c.updated,
+											'total similar': c.deploymentsCount || 'N.A.' 
+										})), { indent: '   ' })
+									}
+									console.log(' ')
+
+									let bucketName, bucketLocation
+									return _enterName('Enter a bucket name: ', 'The bucket name is required').then(answer => {
+										bucketName = answer 
+										const choices = [{ name: ' 1. Single region (cheaper)', value: 'singleRegions' }, { name: ' 2. Multi regions', value: 'multiRegions' }]
+										return promptList({ message: 'Choose a bucket type:', choices, separator: false, noAbort: true }).then(t => {
+											return gcp.bucket.getRegions().then(regions => regions[t]).then(locations => {
+												const choices = locations.map((l,idx) => ({
+													name: ` ${idx+1}. ${l.name}`, value: l.id
+												}))
+												return promptList({ message: `Choose one of the following ${bold(t == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, choices, separator: false })
+											})
+										})
+									}).then(answer => {
+										if (!answer)
+											return 
+
+										bucketLocation = answer
+										return askQuestion(question(`Are you sure you want to create this bucket in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+											if (yes == 'n')
+												return 
+
+											waitDone = wait('Creating bucket')
+											return gcp.bucket.create(bucketName, projectId, token, merge(options, { location: bucketLocation })).then(() => {
+												waitDone()
+												console.log(success(`Bucket successfully created in project ${bold(projectId)}`))
+											})
+										})
+									})
+								})
 							})
 					else if (answer == 'routing') 
 						console.log(error('Operation not supported yet. Coming soon...'))
@@ -793,7 +877,7 @@ const _enterName = (q, r, options={}) => askQuestion(question(q)).then(answer =>
 		console.log(error(r))
 		return _enterName(q, r, options)
 	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
-		return answer
+		return answer.toLowerCase()
 	else {
 		console.log(error('Invalid name. A valid name can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
 		return _enterName(q, r, options)
