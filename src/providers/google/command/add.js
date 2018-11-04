@@ -16,7 +16,7 @@ const {
 	bold, wait, error, promptList, link, askQuestion, 
 	question, success, displayTable, searchAnswer, 
 	info, cmd, warn, displayList } = require('../../../utils/console')
-const { obj: { merge }, file, collection, timezone, validate } = require('../../../utils')
+const { obj: { merge }, file, collection, timezone, validate, identity } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
@@ -38,8 +38,8 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 					{ name: ' 5. Task Queue', value: 'queue' },
 					{ name: ' 6. Bucket', value: 'bucket' },
 					{ name: ' 7. BigQuery', value: 'bigquery' },
-					{ name: ' 6. Access', value: 'access' },
-					{ name: ' 7. Google APIs', value: 'apis' },
+					{ name: ' 8. Access', value: 'access' },
+					{ name: ' 9. Google APIs', value: 'apis' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -411,33 +411,34 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									console.log(' ')
 
 									let bucketName, bucketLocation
-									return _enterName('Enter a bucket name: ', 'The bucket name is required').then(answer => {
-										bucketName = answer 
-										const choices = [{ name: ' 1. Single region (cheaper)', value: 'singleRegions' }, { name: ' 2. Multi regions', value: 'multiRegions' }]
-										return promptList({ message: 'Choose a bucket type:', choices, separator: false, noAbort: true }).then(t => {
-											return gcp.bucket.getRegions().then(regions => regions[t]).then(locations => {
-												const choices = locations.map((l,idx) => ({
-													name: ` ${idx+1}. ${l.name}`, value: l.id
-												}))
-												return promptList({ message: `Choose one of the following ${bold(t == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, choices, separator: false })
+									return _chooseBucketName()
+										.then(answer => {
+											bucketName = answer 
+											const choices = [{ name: ' 1. Single region (cheaper)', value: 'singleRegions' }, { name: ' 2. Multi regions', value: 'multiRegions' }]
+											return promptList({ message: 'Choose a bucket type:', choices, separator: false, noAbort: true }).then(t => {
+												return gcp.bucket.getRegions().then(regions => regions[t]).then(locations => {
+													const choices = locations.map((l,idx) => ({
+														name: ` ${idx+1}. ${l.name}`, value: l.id
+													}))
+													return promptList({ message: `Choose one of the following ${bold(t == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, choices, separator: false })
+												})
 											})
-										})
-									}).then(answer => {
-										if (!answer)
-											return 
-
-										bucketLocation = answer
-										return askQuestion(question(`Are you sure you want to create this bucket in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
-											if (yes == 'n')
+										}).then(answer => {
+											if (!answer)
 												return 
 
-											waitDone = wait('Creating bucket')
-											return gcp.bucket.create(bucketName, projectId, token, merge(options, { location: bucketLocation })).then(() => {
-												waitDone()
-												console.log(success(`Bucket successfully created in project ${bold(projectId)}`))
+											bucketLocation = answer
+											return askQuestion(question(`Are you sure you want to create this bucket in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+												if (yes == 'n')
+													return 
+
+												waitDone = wait('Creating bucket')
+												return gcp.bucket.create(bucketName, projectId, token, merge(options, { location: bucketLocation })).then(() => {
+													waitDone()
+													console.log(success(`Bucket successfully created in project ${bold(projectId)}`))
+												})
 											})
 										})
-									})
 								})
 							})
 					else if (answer == 'routing') 
@@ -454,6 +455,34 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 			})
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
+
+
+const _chooseBucketName = () => _enterName('Enter a bucket name: ', 'The bucket name is required')
+	.then(answer => {
+		let waitDone = wait('Checking name uniqueness')
+		return Promise.all([gcp.bucket.exists(answer), _findUniqueBucketName(answer)]).then(([yes, uniqueName]) => {
+			waitDone()
+			if (yes) {
+				console.log(error(`Sorry, but bucket name ${bold(answer)} is already taken`))
+				const choices = [
+					{ name: ` 1. Use ${bold(uniqueName)} instead`, value: 1 },
+					{ name: ' 2. Choose another bucket name', value: 2 }
+				]
+				return promptList({ message: 'Choose one of the following options:', choices, separator: false, noAbort: true }).then(answer => {
+					if (answer == 1)
+						return uniqueName
+					else 
+						return _chooseBucketName()
+				})
+			} else
+				return answer
+		})
+	})
+
+const _findUniqueBucketName = (name='') => {
+	const newName = `${name}-${identity.new({ short: true })}`.toLowerCase()
+	return gcp.bucket.exists(newName).then(yes => yes ? _findUniqueBucketName(name) : newName)
+}
 
 const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
 	waitDone = wait(`Listing Collaborators for project ${bold(projectId)}`)

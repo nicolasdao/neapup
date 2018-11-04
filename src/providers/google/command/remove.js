@@ -31,7 +31,9 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 					{ name: ' 3. Custom Domain', value: 'domain' },
 					{ name: ' 4. Cron Job', value: 'cron' },
 					{ name: ' 5. Task Queue', value: 'queue' },
-					{ name: ' 6. Access', value: 'access' },
+					{ name: ' 6. Bucket', value: 'bucket' },
+					{ name: ' 7. BigQuery', value: 'bigquery' },
+					{ name: ' 8. Access', value: 'access' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -180,6 +182,82 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 												})
 										}
 									})
+							})
+					else if (answer == 'bucket') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading Buckets info from project ${bold(projectId)}`)
+								return gcp.bucket.list(projectId, token, options).then(({ data: buckets }) => {
+									waitDone()
+									const title = `Buckets In Project ${projectId}`
+									console.log(`\nBuckets In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!buckets || buckets.length == 0) {
+										console.log('   No Buckets found\n')
+										return
+									}
+									else {
+										const nowDeployments = buckets.filter(b => b.id.indexOf('now-deployments-') == 0) // legacy
+										const webfuncDeployments = buckets.filter(b => b.id.indexOf('webfunc-deployment-') == 0) // legacy
+										const neapupDeployments = buckets.filter(b => b.id.indexOf('neapup-v') == 0)
+										const normalBuckets = buckets.filter(b => {
+											return b.id.indexOf('now-deployments-') != 0
+											&& b.id.indexOf('webfunc-deployment-') != 0
+											&& b.id.indexOf('neapup-v') != 0
+										})
+										if (nowDeployments.length > 0) {
+											let lastDeployment = nowDeployments.slice(-1)[0]
+											lastDeployment.id = 'now-deployments-xxx'
+											lastDeployment.deploymentsCount = nowDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (webfuncDeployments.length > 0) {
+											let lastDeployment = webfuncDeployments.slice(-1)[0]
+											lastDeployment.id = 'webfunc-deployments-YYYYMMDD-hhmmss-xxxxxxxxx'
+											lastDeployment.deploymentsCount = webfuncDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										if (neapupDeployments.length > 0) {
+											let lastDeployment = neapupDeployments.slice(-1)[0]
+											lastDeployment.id = 'neapup-vYYYYMMDD-hhmmss-x'
+											lastDeployment.deploymentsCount = neapupDeployments.length
+											normalBuckets.push(lastDeployment)
+										}
+										displayTable(normalBuckets.map((c, idx) => ({
+											id: idx + 1,
+											name: c.id,
+											location: c.location,
+											type: c.storageClass, 
+											created: c.timeCreated,
+											updated: c.updated,
+											'total similar': c.deploymentsCount || 'N.A.' 
+										})), { indent: '   ' })
+									}
+									console.log(' ')
+
+									const choices = buckets.filter(({ id }) => !id.match(/^(neapup-v|now-deployments-|webfunc-deployment-)/)).map(({ id },idx) => ({ name: ` ${idx+1}. ${id}`, value: id }))
+									if (!choices.some(x => x)) {
+										console.log(info('No buckets can be deleted. The only existing buckets are restricted system buckets that are necessary to operate your account. They cannot be deleted.'))
+										return
+									}
+
+									return promptList({ message: 'Choose which bucket you want to delete:', choices, separator: false }).then(answer => {
+										if (!answer)
+											return
+										return askQuestion(question(`Are you sure you want to delete bucket ${bold(answer)} in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+											if (yes == 'n')
+												return
+
+											waitDone = wait('Deleting bucket')
+											return gcp.bucket.delete(answer, token, options).then(() => {
+												waitDone()
+												console.log(success(`Bucket ${bold(answer)} successfully deleted from project ${bold(projectId)}`))
+											})
+										})
+									})
+								})
 							})
 					else if (answer == 'access') 
 						return _getAppJsonFiles(options)

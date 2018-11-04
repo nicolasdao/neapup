@@ -70,7 +70,10 @@ const processResponse = (res, options={}) => {
 	if (options.resParsingMethod == 'text')
 		return res.text().then(data => ({ status: res.status, data }))
 	else
-		return res.json().then(data => ({ status: res.status, data }))
+		return res.json()
+			.then(data => ({ status: res.status, data }))
+			.catch(() => res.text().then(data => ({ status: res.status, data })))
+			.catch(() => ({ status: 200, data: null }))
 }
 
 const getData = (url, headers={}, options={ verbose:true }) => Promise.resolve(null).then(() => {

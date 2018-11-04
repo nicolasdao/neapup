@@ -31,8 +31,9 @@ const PROJECT_OPS_URL = operationId => `https://cloudresourcemanager.googleapis.
 const BILLING_PAGE = projectId => `https://console.cloud.google.com/billing/linkedaccount?project=${projectId}&folder&organizationId`
 const BILLING_INFO_URL = projectId => `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
 // BUCKET
-const BUCKET_FILE_URL = (bucketName, filepath) => `https://www.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}${ filepath ? `/o/${encodeURIComponent(filepath)}` : ''}`
-const BUCKET_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
+const BUCKET_URL = bucketName => `https://www.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}`
+const BUCKET_FILE_URL = (bucketName, filepath) => `${BUCKET_URL(bucketName)}${ filepath ? `/o/${encodeURIComponent(filepath)}` : ''}`
+const BUCKET_LIST_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
 const BUCKET_UPLOAD_URL = (bucketName, fileName, projectId) => `https://www.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucketName)}/o?uploadType=media&name=${encodeURIComponent(fileName)}&project=${encodeURIComponent(projectId)}`
 // APP ENGINE
 const APP_ENG_DETAILS_URL = projectId => `https://appengine.googleapis.com/v1/apps/${projectId}`
@@ -554,7 +555,7 @@ const createBucket = (name, projectId, token, options={ debug:false, verbose:tru
 	if (options.location)
 		payload.location = options.location
 
-	return fetch.post(BUCKET_URL(projectId), {
+	return fetch.post(BUCKET_LIST_URL(projectId), {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, JSON.stringify(payload), opts)
@@ -563,6 +564,28 @@ const createBucket = (name, projectId, token, options={ debug:false, verbose:tru
 				_showDebug(`Bucket ${bold(name)} already exists.`, opts)
 			return res
 		})
+})
+
+const isBucketnameExists = (bucketName, options={}) => Promise.resolve(null).then(() => {
+	_showDebug('Checking if bucket name exists.', options)
+	_validateRequiredParams({ bucketName })
+
+	return fetch.get(BUCKET_URL(bucketName), {
+		'Content-Type': 'application/json'
+	}, { verbose: false }).then(() => true).catch(err => {
+		const e = JSON.parse(err.message)
+		return e.code != 404
+	})
+})
+
+const deleteBucket = (bucketName, token, options={}) => Promise.resolve(null).then(() => {
+	_showDebug('Deleting bucket.', options)
+	_validateRequiredParams({ bucketName, token })
+
+	return fetch.delete(BUCKET_URL(bucketName), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, { verbose: false })
 })
 
 const listBucketLocations = () => Promise.resolve(null).then(() => ({
@@ -598,7 +621,7 @@ const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`List all buckets in Google Cloud Platform's project ${bold(projectId)}.`, opts)
 
-	return fetch.get(`${BUCKET_URL(projectId)}${options.cursor ? `?pageToken=${options.cursor}` : ''}`, {
+	return fetch.get(`${BUCKET_LIST_URL(projectId)}${options.cursor ? `?pageToken=${options.cursor}` : ''}`, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, opts).then(({ status, data }) => {
@@ -2229,10 +2252,12 @@ module.exports = {
 	bucket: {
 		'get': getBucketFileContent,
 		list: listBuckets,
+		exists: isBucketnameExists,
 		getRegions: listBucketLocations,
 		getInfo: getBucketFile,
 		create: createBucket,
-		uploadFile: uploadFileToBucket
+		uploadFile: uploadFileToBucket,
+		delete: deleteBucket
 	},
 	bigQuery: {
 		list: listBigQueryDBs,
