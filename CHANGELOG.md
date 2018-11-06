@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.30"></a>
+## [0.22.30](https://gitlab.com/neap/neap-manager/compare/v0.22.29...v0.22.30) (2018-11-06)
+
+
+### Features
+
+* Add support for add bucket ([6561933](https://gitlab.com/neap/neap-manager/commit/6561933))
+* Add support for adding/deleting BigQuery DB and Tables ([9e6a1f5](https://gitlab.com/neap/neap-manager/commit/9e6a1f5))
+* Add support to deleted a bucket and check if a bucket's name is available ([0bb77d3](https://gitlab.com/neap/neap-manager/commit/0bb77d3))
+
+
+
 <a name="0.22.29"></a>
 ## [0.22.29](https://gitlab.com/neap/neap-manager/compare/v0.22.28...v0.22.29) (2018-11-03)
 
