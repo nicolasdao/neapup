@@ -441,6 +441,92 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 										})
 								})
 							})
+					else if (answer == 'bigquery') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading BigQuery databases info in project ${bold(projectId)}`)
+								return gcp.bigQuery.list(projectId, token, options).then(({ data: dbs }) => {
+									waitDone()
+									const title = `BiqQuery Databases In Project ${projectId}`
+									console.log(`\nBiqQuery Databases In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!dbs || dbs.length == 0) {
+										console.log('   No Databases found\n')
+										console.log(' ')
+										return
+									}
+
+									displayTable(dbs.map((c,idx) => ({
+										id: idx + 1,
+										name: c.id.split(':').slice(-1)[0],
+										location: c.location
+									})), { indent: '   ' })
+									console.log(' ')
+
+									const choices = [
+										{ name: ' 1. New DB', value: 'db' },
+										{ name: ' 2. New DB Table', value: 'table' }
+									]
+									return promptList({ message: 'What do you want to add? ', choices, separator: false }).then(answer => {
+										if (!answer)
+											return
+										else if (answer == 'db') {
+											return _enterName('Enter a DB name: ', 'Invalid DB name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ })).then(answer => {
+												return askQuestion(question(`Are you sure you want to create a new ${bold(answer)} BigQuery DB in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+													if (yes == 'n')
+														return
+													
+													waitDone = wait('Creating a new BigQuery DB')
+													return gcp.bigQuery.create(projectId, answer, token, options).then(() => {
+														waitDone()
+														console.log(success(`New BigQuery DB ${bold(answer)} successfully created in project ${bold(projectId)}`))
+													})
+												})
+											}) 
+										} else {
+											const choices = dbs.map((db,idx) => ({ name: ` ${bold(idx+1)}. ${bold(db.id.split(':').slice(-1)[0])}`, value: db.id.split(':').slice(-1)[0] }))
+											return promptList({ message: 'Select a DB:', choices, separator: false }).then(answer => {
+												if (!answer)
+													return 
+												waitDone = wait(`Loading all tables in DB ${bold(answer)} in project ${bold(projectId)}`)
+												return gcp.bigQuery.table.list(projectId, answer, token, options).then(({ data }) => {
+													waitDone()
+													const title = `Tables In DB ${answer} In Project ${projectId}`
+													console.log(`\nTables In DB ${bold(answer)} In Project ${bold(projectId)}`)
+													console.log(collection.seed(title.length).map(() => '=').join(''))
+													console.log(' ')
+													if (data.length == 0)
+														console.log('   No Tables found\n')
+													else
+														displayTable(data.map((c,idx) => ({
+															id: idx + 1,
+															name: c.id.split('.').slice(-1)[0],
+															created: (new Date(c.creationTime * 1)).toString()
+														})), { indent: '   ' })
+													
+													console.log(' ')
+													
+													return _enterName('Enter a table name: ', 'Invalid table name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ })).then(tableName => {
+														return askQuestion(question(`Are you sure you want to create a new ${bold(tableName)} table in DB ${bold(answer)} in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+															if (yes == 'n')
+																return
+															
+															waitDone = wait('Creating a new BigQuery table')
+															return gcp.bigQuery.table.create(projectId, answer, tableName, token, options).then(() => {
+																waitDone()
+																console.log(success(`New BigQuery table ${bold(tableName)} successfully created in DB ${bold(answer)} in project ${bold(projectId)}`))
+															})
+														})
+													}) 
+												})
+
+											})
+										}
+									})
+								})
+							})
 					else if (answer == 'routing') 
 						console.log(error('Operation not supported yet. Coming soon...'))
 					else if (answer == 'account')
@@ -900,12 +986,13 @@ const _configureCronSchedule = () => Promise.resolve(null)
 	})
 
 const _enterName = (q, r, options={}) => askQuestion(question(q)).then(answer => {
+	const rx = options.rule || /^[a-zA-Z0-9\-_]+$/
 	if (!answer && options.default)
 		return options.default
 	else if (!answer) {
 		console.log(error(r))
 		return _enterName(q, r, options)
-	} else if (answer.match(/^[a-zA-Z0-9\-_]+$/))
+	} else if (answer.match(rx))
 		return answer.toLowerCase()
 	else {
 		console.log(error('Invalid name. A valid name can only contain alphanumerical characters, - and _. Spaces are not allowed.'))

@@ -255,7 +255,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 											displayTable(data.map((c,idx) => ({
 												id: idx + 1,
 												name: c.id.split('.').slice(-1)[0],
-												created: c.creationTime
+												created: (new Date(c.creationTime * 1)).toString()
 											})), { indent: '   ' })
 											console.log(' ')
 										})

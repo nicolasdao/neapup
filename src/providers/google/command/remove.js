@@ -259,6 +259,100 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 									})
 								})
 							})
+					else if (answer == 'bigquery') 
+						return _getAppJsonFiles(options)
+							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))
+							.then(({ projectId, token }) => {
+								waitDone = wait(`Loading BigQuery databases info in project ${bold(projectId)}`)
+								return gcp.bigQuery.list(projectId, token, options).then(({ data: dbs }) => {
+									waitDone()
+									const title = `BiqQuery Databases In Project ${projectId}`
+									console.log(`\nBiqQuery Databases In Project ${bold(projectId)}`)
+									console.log(collection.seed(title.length).map(() => '=').join(''))
+									console.log(' ')
+									if (!dbs || dbs.length == 0) {
+										console.log('   No Databases found\n')
+										console.log(' ')
+										return
+									}
+
+									displayTable(dbs.map((c,idx) => ({
+										id: idx + 1,
+										name: c.id.split(':').slice(-1)[0],
+										location: c.location
+									})), { indent: '   ' })
+									console.log(' ')
+
+									const choices = [
+										{ name: ' 1. DB', value: 'db' },
+										{ name: ' 2. DB Table', value: 'table' }
+									]
+									return promptList({ message: 'What do you want to delete? ', choices, separator: false }).then(answer => {
+										if (!answer)
+											return
+										else if (answer == 'db') {
+											const choices = dbs.map((db,idx) => ({ name: ` ${idx+1}. ${db.id.split(':').slice(-1)[0]}`, value: db.id.split(':').slice(-1)[0] }))
+											return promptList({ message: 'Select the DB you want to delete:', choices, separator: false }).then(dbName => {
+												if (!dbName)
+													return
+
+												return askQuestion(question(`Are you sure you want to delete the ${bold(dbName)} BigQuery DB from project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+													if (yes == 'n')
+														return
+													
+													waitDone = wait('Deleting BigQuery DB')
+													return gcp.bigQuery.delete(projectId, dbName, token, options).then(() => {
+														waitDone()
+														console.log(success(`BigQuery DB ${bold(dbName)} successfully deleted from project ${bold(projectId)}`))
+													})
+												})
+											})
+										} else {
+											const choices = dbs.map((db,idx) => ({ name: ` ${bold(idx+1)}. ${bold(db.id.split(':').slice(-1)[0])}`, value: db.id.split(':').slice(-1)[0] }))
+											return promptList({ message: 'Select a DB:', choices, separator: false }).then(answer => {
+												if (!answer)
+													return 
+												waitDone = wait(`Loading all tables in DB ${bold(answer)} in project ${bold(projectId)}`)
+												return gcp.bigQuery.table.list(projectId, answer, token, options).then(({ data }) => {
+													waitDone()
+													const title = `Tables In DB ${answer} In Project ${projectId}`
+													console.log(`\nTables In DB ${bold(answer)} In Project ${bold(projectId)}`)
+													console.log(collection.seed(title.length).map(() => '=').join(''))
+													console.log(' ')
+													if (data.length == 0)
+														console.log('   No Tables found\n')
+													else
+														displayTable(data.map((c,idx) => ({
+															id: idx + 1,
+															name: c.id.split('.').slice(-1)[0],
+															created: (new Date(c.creationTime * 1)).toString()
+														})), { indent: '   ' })
+													
+													console.log(' ')
+													
+													const choices = data.map(({ id },idx) => ({ name: ` ${idx+1}. ${id.split('.').slice(-1)[0]}`, value: id.split('.').slice(-1)[0] }))
+													return promptList({ message: 'Which table do you want to delete?', choices, separator: false }).then(tableName => {
+														if (!tableName)
+															return
+
+														return askQuestion(question(`Are you sure you want to delete table ${bold(tableName)} in DB ${bold(answer)} from project ${bold(projectId)} (Y/n) ? `)).then(yes => {
+															if (yes == 'n')
+																return
+															
+															waitDone = wait('Deleting BigQuery table')
+															return gcp.bigQuery.table.delete(projectId, answer, tableName, token, options).then(() => {
+																waitDone()
+																console.log(success(`BigQuery table ${bold(tableName)} successfully delete from DB ${bold(answer)} in project ${bold(projectId)}`))
+															})
+														}) 
+													})
+												})
+
+											})
+										}
+									})
+								})
+							})
 					else if (answer == 'access') 
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, removeStuffs, options))

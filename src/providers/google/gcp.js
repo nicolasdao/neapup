@@ -62,8 +62,8 @@ const TASK_QUEUE_URL = (projectId, locationId, queueName, taskName) => `https://
 const IAM_SERVICE_ACCOUNT_URL = (projectId, serviceEmail) => `https://iam.googleapis.com/v1/projects/${projectId}/serviceAccounts${serviceEmail ? `/${encodeURIComponent(serviceEmail)}` : ''}`
 const IAM_SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${IAM_SERVICE_ACCOUNT_URL(projectId, serviceEmail)}/keys${keyId ? `/${keyId}` : ''}`
 // BIGQUERY API
-const BIGQUERY_DB_URL = projectId => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets`
-const BIGQUERY_TABLES_URL = (projectId, db) => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets/${db}/tables`
+const BIGQUERY_DB_URL = (projectId, dbId) => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets${dbId ? `/${dbId}`: ''}`
+const BIGQUERY_TABLES_URL = (projectId, dbId, tableId) => `${BIGQUERY_DB_URL(projectId, dbId)}/tables${tableId ? `/${tableId}`: ''}`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1561,62 +1561,69 @@ const listBigQueryTables = (projectId, db, token, options={}) => Promise.resolve
 		.then(res => ({ status: res.status, data: (res.data || {}).tables || [] }))
 })
 
-// // This method is a bit of a pain as it does not provide a rate config as granular as the legacy 'updateQueue' API
-// /**
-//  * [description]
-//  * @param  {[type]} projectId               [description]
-//  * @param  {[type]} service                 [description]
-//  * @param  {[type]} queue                   [description]
-//  * @param  {Number} maxDispatchesPerSecond  Accepts decimal to. For example, 0.1 means that the maximum rate is to process the queue every 10 sec, i.e., 6/m (6 times per minutes) 
-//  * @param  {[type]} maxConcurrentDispatches [description]
-//  * @param  {[type]} token                   [description]
-//  * @param  {Object} options                 [description]
-//  * @return {[type]}                         [description]
-//  */
-// const createTaskQueue = (projectId, service, queue, maxDispatchesPerSecond, maxConcurrentDispatches, token, options={}) => getAppDetails(projectId, token, options)
-// 	.then(({ data: { locationId: projectLocationId } }) => {
-// 		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+const createBigQueryDB = (projectId, dbName, token, options={}) => getAppDetails(projectId, token, options)
+	.then(({ data: { locationId } }) => {
+		_validateRequiredParams({ projectId, dbName, locationId, token })
+		_showDebug(`Creating a new BigQuery DB in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-// 		if (!locationId)
-// 			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+		let payload = {
+			datasetReference: {
+				datasetId: dbName,
+				projectId
+			},
+			location: locationId
+		}
 
-// 		_validateRequiredParams({ projectId, queue, locationId, token })
-// 		_showDebug(`Creating a new queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+		if (options.description)
+			payload.description = options.description
 
-// 		return fetch.post(TASK_QUEUE_URL(projectId, locationId), {
-// 			'Content-Type': 'application/json',
-// 			Authorization: `Bearer ${token}`
-// 		}, JSON.stringify({
-// 			name: `projects/${projectId}/locations/${locationId}/queues/${queue}`,
-// 			rateLimits: {
-// 				maxDispatchesPerSecond: maxDispatchesPerSecond || 500,
-// 				maxConcurrentDispatches: maxConcurrentDispatches || 1000
-// 			},
-// 			appEngineHttpQueue: {
-// 				appEngineRoutingOverride: {
-// 					service: service || 'default'
-// 				}
-// 			}
-// 		}), options)
-// 			.then(res => ({ status: res.status, data: res.data || {} }))
-// 	})
+		return fetch.post(BIGQUERY_DB_URL(projectId), {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		}, JSON.stringify(payload), options)
+			.then(res => ({ status: res.status, data: res.data || {} }))
+	})
 
-// const deleteTaskQueue = (projectId, queue, token, options={}) => getAppDetails(projectId, token, options)
-// 	.then(({ data: { locationId: projectLocationId } }) => {
-// 		const locationId = AVAILABLE_TASK_API_REGIONS[projectLocationId]
+const deleteBigQueryDB = (projectId, dbName, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, dbName, token })
+	_showDebug(`Deleting BigQuery DB from Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-// 		if (!locationId)
-// 			throw new Error(`The Cloud Task API is in beta and currently does not support ${bold(projectLocationId)}. Allowed locationId: ${bold('us-central1')} (Iowa), ${bold('us-east1')} (South Carolina), ${bold('europe-west1')} (Belgium), ${bold('asia-northeast1')} (Tokyo).`)
+	return fetch.delete(`${BIGQUERY_DB_URL(projectId, dbName)}?deleteContents=true`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
 
-// 		_validateRequiredParams({ projectId, queue, locationId, token })
-// 		_showDebug(`Deleting a queue in Google Cloud Platform's project ${bold(projectId)}.`, options)
+const createBigQueryTable = (projectId, dbName, tableName, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, dbName, tableName, token })
+	_showDebug(`Creating a new BigQuery DB in Google Cloud Platform's project ${bold(projectId)}.`, options)
 
-// 		return fetch.delete(TASK_QUEUE_URL(projectId, locationId, queue), {
-// 			'Content-Type': 'application/json',
-// 			Authorization: `Bearer ${token}`
-// 		}, null, options)
-// 			.then(res => ({ status: res.status, data: res.data || {} }))
-// 	})
+	const payload = {
+		tableReference: {
+			datasetId: dbName,
+			projectId,
+			tableId: tableName
+		}
+	}
+
+	return fetch.post(BIGQUERY_TABLES_URL(projectId, dbName), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify(payload), options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
+const deleteBigQueryTable = (projectId, dbName, tableName, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, dbName, tableName, token })
+	_showDebug(`Deleting BigQuery Table from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.delete(BIGQUERY_TABLES_URL(projectId, dbName, tableName), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2260,9 +2267,13 @@ module.exports = {
 		delete: deleteBucket
 	},
 	bigQuery: {
+		create: createBigQueryDB,
 		list: listBigQueryDBs,
+		delete: deleteBigQueryDB,
 		table: {
-			list: listBigQueryTables
+			create: createBigQueryTable,
+			list: listBigQueryTables,
+			delete: deleteBigQueryTable
 		}
 	},
 	app: {
