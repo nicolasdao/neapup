@@ -162,10 +162,10 @@ const createNewProject = (token, options={}) => {
 				})
 				// 3. Enable billing
 				.then(() => enableBilling(projectId, token, options).then(res => res.projectId))
-				// 4. Enable Cloud Task API
+				// 4. Enable all Google API
 				.then(projectId => {
 					waitDone = wait('Enabling the Google APIs')
-					return apis.enable.all(projectId, token, options).then(() => {
+					return apis.enable(projectId, 'all', token, options).then(() => {
 						waitDone()
 						return projectId
 					})

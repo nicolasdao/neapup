@@ -236,14 +236,15 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 									console.log(' ')
 
 									const choices = dbs.map((db,idx) => ({ name: ` ${bold(idx+1)}. ${bold(db.id.split(':').slice(-1)[0])}`, value: db.id.split(':').slice(-1)[0] }))
-									return promptList({ message: 'Select a DB to list its tables:', choices, separator: false }).then(answer => {
-										if (!answer)
+									return promptList({ message: 'To list tables, please select a DB:', choices, separator: false }).then(dbName => {
+										if (!dbName)
 											return 
-										waitDone = wait(`Loading all tables in DB ${bold(answer)} in project ${bold(projectId)}`)
-										return gcp.bigQuery.table.list(projectId, answer, token, options).then(({ data }) => {
+
+										waitDone = wait(`Loading all tables in DB ${bold(dbName)} in project ${bold(projectId)}`)
+										return gcp.bigQuery.table.list(projectId, dbName, token, options).then(({ data }) => {
 											waitDone()
-											const title = `Tables In DB ${answer} In Project ${projectId}`
-											console.log(`\nTables In DB ${bold(answer)} In Project ${bold(projectId)}`)
+											const title = `Tables In DB ${dbName} In Project ${projectId}`
+											console.log(`\nTables In DB ${bold(dbName)} In Project ${bold(projectId)}`)
 											console.log(collection.seed(title.length).map(() => '=').join(''))
 											console.log(' ')
 											if (data.length == 0) {
@@ -255,7 +256,7 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 											displayTable(data.map((c,idx) => ({
 												id: idx + 1,
 												name: c.id.split('.').slice(-1)[0],
-												created: (new Date(c.creationTime * 1)).toString()
+												created: (new Date(c.creationTime * 1)).toISOString()
 											})), { indent: '   ' })
 											console.log(' ')
 										})

@@ -8,10 +8,12 @@
  */
 
 // For more info about Google Cloud API, go to: 
-// 	- Google Cloud Platform API: https://cloud.google.com/apis/docs/overview
-// 	- Google Site Verification: https://developers.google.com/site-verification/v1/getting_started
-// 	- Google Bucket IAM: https://cloud.google.com/storage/docs/json_api/v1/buckets/setIamPolicy
-// 	- Google Bucket API: https://cloud.google.com/storage/docs/json_api/v1/buckets
+// 
+// 	- Google Cloud Platform API: 	https://cloud.google.com/apis/docs/overview
+// 	- Google Site Verification: 	https://developers.google.com/site-verification/v1/getting_started
+// 	- Google Bucket IAM: 			https://cloud.google.com/storage/docs/json_api/v1/buckets/setIamPolicy
+// 	- Google Bucket API: 			https://cloud.google.com/storage/docs/json_api/v1/buckets
+// 	- Google BigQuery Transfer API: https://cloud.google.com/bigquery/docs/cloud-storage-transfer
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
@@ -32,7 +34,7 @@ const BILLING_PAGE = projectId => `https://console.cloud.google.com/billing/link
 const BILLING_INFO_URL = projectId => `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`
 // BUCKET
 const BUCKET_URL = bucketName => `https://www.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}`
-const BUCKET_FILE_URL = (bucketName, filepath) => `${BUCKET_URL(bucketName)}${ filepath ? `/o/${encodeURIComponent(filepath)}` : ''}`
+const BUCKET_FILE_URL = (bucketName, filepath) => `${BUCKET_URL(bucketName)}/o${ filepath ? `${filepath ? `/${encodeURIComponent(filepath.replace(/^\//, ''))}` : ''}` : ''}`
 const BUCKET_LIST_URL = projectId => `https://www.googleapis.com/storage/v1/b?project=${projectId}`
 const BUCKET_UPLOAD_URL = (bucketName, fileName, projectId) => `https://www.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucketName)}/o?uploadType=media&name=${encodeURIComponent(fileName)}&project=${encodeURIComponent(projectId)}`
 // APP ENGINE
@@ -64,6 +66,8 @@ const IAM_SERVICE_ACCOUNT_KEY_URL = (projectId, serviceEmail, keyId) => `${IAM_S
 // BIGQUERY API
 const BIGQUERY_DB_URL = (projectId, dbId) => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/datasets${dbId ? `/${dbId}`: ''}`
 const BIGQUERY_TABLES_URL = (projectId, dbId, tableId) => `${BIGQUERY_DB_URL(projectId, dbId)}/tables${tableId ? `/${tableId}`: ''}`
+const BIGQUERY_TRANSFER_URL = (projectId, locationId, configId) => `https://bigquerydatatransfer.googleapis.com/v1/projects/${projectId}/locations/${locationId}/transferConfigs${configId ? `/${configId}`: ''}`
+const BIGQUERY_JOBS_URL = projectId => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/jobs`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -616,12 +620,25 @@ const listBucketLocations = () => Promise.resolve(null).then(() => ({
 	]
 }))
 
+/**
+ * [description]
+ * @param  {String} projectId           [description]
+ * @param  {String} token               [description]
+ * @param  {Object} options.cursor 		Used in the query string to filter buckets prior to the cursor
+ * @return {[type]}                     [description]
+ */
 const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then(() => {
 	const opts = Object.assign({ debug:false, verbose:true }, options)
 	_validateRequiredParams({ projectId, token })
 	_showDebug(`List all buckets in Google Cloud Platform's project ${bold(projectId)}.`, opts)
 
-	return fetch.get(`${BUCKET_LIST_URL(projectId)}${options.cursor ? `?pageToken=${options.cursor}` : ''}`, {
+	const params = []
+	if (options.cursor)
+		params.push(`pageToken=${encodeURIComponent(options.cursor)}`)
+
+	const queryString = params.join('&')
+
+	return fetch.get(`${BUCKET_LIST_URL(projectId)}${queryString ? `?${queryString}` : ''}`, {
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, opts).then(({ status, data }) => {
@@ -630,6 +647,45 @@ const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then
 		if (nextPageToken) {
 			const cursor = nextPageToken
 			return listBuckets(projectId, token, objectHelper.merge(options, { cursor })).then(({ data }) => ({
+				status,
+				data: [...buckets, ...((data || {}).items || [])] 
+			}))
+		} else
+			return { status, data: buckets }
+	})
+})
+
+/**
+ * [description]
+ * @param  {String} projectId           [description]
+ * @param  {String} token               [description]
+ * @param  {Object} options.prefix 		Used in the query string to filter buckets with path starting with that prefix
+ * @param  {Object} options.cursor 		Used in the query string to filter buckets prior to the cursor
+ * @return {[type]}                     [description]
+ */
+const listBucketContent = (bucketName, token, options={}) => Promise.resolve(null).then(() => {
+	const opts = Object.assign({ debug:false, verbose:true }, options)
+	_validateRequiredParams({ bucketName, token })
+	_showDebug('List bucket\'s content in Google Cloud Platform', opts)
+
+	const prefix = options.prefix ? options.prefix.replace(/(^\/|\*)/g, '') : null
+	const params = []
+	if (prefix)
+		params.push(`prefix=${encodeURIComponent(prefix)}`)
+	if (options.cursor)
+		params.push(`pageToken=${encodeURIComponent(options.cursor)}`)
+
+	const queryString = params.join('&')
+
+	return fetch.get(`${BUCKET_FILE_URL(bucketName)}${queryString ? `?${queryString}` : ''}`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, opts).then(({ status, data }) => {
+		const nextPageToken = (data || {}).nextPageToken
+		const buckets = (data || {}).items || []
+		if (nextPageToken) {
+			const cursor = nextPageToken
+			return listBucketContent(bucketName, token, objectHelper.merge(options, { cursor })).then(({ data }) => ({
 				status,
 				data: [...buckets, ...((data || {}).items || [])] 
 			}))
@@ -1614,6 +1670,36 @@ const createBigQueryTable = (projectId, dbName, tableName, token, options={}) =>
 		.then(res => ({ status: res.status, data: res.data || {} }))
 })
 
+const createBigQueryTableFromBucket = (projectId, dbName, tableName, bucketName, bucketPath, token, options={}) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ projectId, dbName, tableName, bucketName, token })
+	_showDebug(`Creating a new BigQuery DB in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const payload = {
+		configuration:{
+			load: {
+				autodetect: true,
+				destinationTable: {
+					projectId,
+					datasetId: dbName,
+					tableId: tableName
+				},
+				schemaUpdateOptions: ['ALLOW_FIELD_ADDITION'],
+				writeDisposition: 'WRITE_APPEND', // 
+				ignoreUnknownValues: false,
+				maxBadRecords: '1000000',
+				sourceFormat: 'NEWLINE_DELIMITED_JSON',
+				sourceUris: [`gs://${bucketName}${bucketPath ? `/${bucketPath.replace(/^\//, '')}` : ''}`]
+			}
+		}
+	}
+
+	return fetch.post(BIGQUERY_JOBS_URL(projectId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify(payload), options)
+		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
 const deleteBigQueryTable = (projectId, dbName, tableName, token, options={}) => Promise.resolve(null).then(() => {
 	_validateRequiredParams({ projectId, dbName, tableName, token })
 	_showDebug(`Deleting BigQuery Table from Google Cloud Platform's project ${bold(projectId)}.`, options)
@@ -1623,6 +1709,61 @@ const deleteBigQueryTable = (projectId, dbName, tableName, token, options={}) =>
 		Authorization: `Bearer ${token}`
 	}, null, options)
 		.then(res => ({ status: res.status, data: res.data || {} }))
+})
+
+const listBigQueryTransfers = (projectId, token, options={}) => getAppDetails(projectId, token, options).then(({ data: { locationId } }) => {
+	_validateRequiredParams({ projectId, locationId, token })
+	_showDebug(`Requesting all BigQuery Transfer Jobs from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.get(BIGQUERY_TRANSFER_URL(projectId,locationId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, options)
+		.then(res => ({ 
+			status: res.status, 
+			data: ((res.data || {}).transferConfigs || []).map(d => {
+				const id = d.name.split('/').slice(-1)[0]
+				d.id = id 
+				return d
+			}) }))
+})
+
+const createBigQueryTransfer = (projectId, configName, dbName, tableName, dataSourceId, dataSourcePath, dataSourceFormat, schedule, token, options={}) => getAppDetails(projectId, token, options).then(({ data: { locationId } }) => {
+	_validateRequiredParams({ projectId, configName, dbName, tableName, dataSourceId, dataSourceFormat, locationId, schedule, token })
+	_showDebug(`Creating a new BigQuery Transfer Jobs in Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	const payload = {
+		displayName: configName, 
+		destinationDatasetId: dbName,
+		dataSourceId: 'google_cloud_storage', 
+		schedule,
+		params: {
+			destination_table_name_template: tableName,
+			data_path_template: `gs://${dataSourceId}${dataSourcePath ? `/${dataSourcePath.replace(/^\//, '')}` : ''}`,
+			file_format: dataSourceFormat.toUpperCase(),
+			max_bad_records: '10000',
+			ignore_unknown_values: true
+			// field_delimiter: ",",
+			// skip_leading_rows: "0"
+		}
+	}
+
+	return fetch.post(BIGQUERY_TRANSFER_URL(projectId,locationId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify(payload), options)
+		.then(res => ({ status: res.status, data: (res.data || {}) }))
+})
+
+const deleteBigQueryTransfer = (projectId, configId, token, options={}) => getAppDetails(projectId, token, options).then(({ data: { locationId } }) => {
+	_validateRequiredParams({ projectId, configId, locationId, token })
+	_showDebug(`Deleting a BigQuery Transfer Jobs from Google Cloud Platform's project ${bold(projectId)}.`, options)
+
+	return fetch.delete(BIGQUERY_TRANSFER_URL(projectId,locationId,configId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, null, options)
+		.then(res => ({ status: res.status, data: (res.data || {}) }))
 })
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2264,7 +2405,10 @@ module.exports = {
 		getInfo: getBucketFile,
 		create: createBucket,
 		uploadFile: uploadFileToBucket,
-		delete: deleteBucket
+		delete: deleteBucket,
+		content: {
+			list: listBucketContent
+		}
 	},
 	bigQuery: {
 		create: createBigQueryDB,
@@ -2272,8 +2416,14 @@ module.exports = {
 		delete: deleteBigQueryDB,
 		table: {
 			create: createBigQueryTable,
+			createFromBucket: createBigQueryTableFromBucket,
 			list: listBigQueryTables,
 			delete: deleteBigQueryTable
+		},
+		syncingJob: {
+			list: listBigQueryTransfers,
+			create: createBigQueryTransfer,
+			delete: deleteBigQueryTransfer
 		}
 	},
 	app: {

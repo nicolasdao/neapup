@@ -362,54 +362,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 						return _getAppJsonFiles(options)
 							.then(appJsonFiles => chooseAProject(appJsonFiles, activeProjectIds, token, addStuffs, options))
 							.then(({ projectId, token }) => {
-								waitDone = wait(`Loading Buckets info from project ${bold(projectId)}`)
-								return gcp.bucket.list(projectId, token, options).then(({ data: buckets }) => {
-									waitDone()
-									const title = `Buckets In Project ${projectId}`
-									console.log(`\nBuckets In Project ${bold(projectId)}`)
-									console.log(collection.seed(title.length).map(() => '=').join(''))
-									console.log(' ')
-									if (!buckets || buckets.length == 0)
-										console.log('   No Buckets found\n')
-									else {
-										const nowDeployments = buckets.filter(b => b.id.indexOf('now-deployments-') == 0) // legacy
-										const webfuncDeployments = buckets.filter(b => b.id.indexOf('webfunc-deployment-') == 0) // legacy
-										const neapupDeployments = buckets.filter(b => b.id.indexOf('neapup-v') == 0)
-										const normalBuckets = buckets.filter(b => {
-											return b.id.indexOf('now-deployments-') != 0
-											&& b.id.indexOf('webfunc-deployment-') != 0
-											&& b.id.indexOf('neapup-v') != 0
-										})
-										if (nowDeployments.length > 0) {
-											let lastDeployment = nowDeployments.slice(-1)[0]
-											lastDeployment.id = 'now-deployments-xxx'
-											lastDeployment.deploymentsCount = nowDeployments.length
-											normalBuckets.push(lastDeployment)
-										}
-										if (webfuncDeployments.length > 0) {
-											let lastDeployment = webfuncDeployments.slice(-1)[0]
-											lastDeployment.id = 'webfunc-deployments-YYYYMMDD-hhmmss-xxxxxxxxx'
-											lastDeployment.deploymentsCount = webfuncDeployments.length
-											normalBuckets.push(lastDeployment)
-										}
-										if (neapupDeployments.length > 0) {
-											let lastDeployment = neapupDeployments.slice(-1)[0]
-											lastDeployment.id = 'neapup-vYYYYMMDD-hhmmss-x'
-											lastDeployment.deploymentsCount = neapupDeployments.length
-											normalBuckets.push(lastDeployment)
-										}
-										displayTable(normalBuckets.map((c, idx) => ({
-											id: idx + 1,
-											name: c.id,
-											location: c.location,
-											type: c.storageClass, 
-											created: c.timeCreated,
-											updated: c.updated,
-											'total similar': c.deploymentsCount || 'N.A.' 
-										})), { indent: '   ' })
-									}
-									console.log(' ')
-
+								return _listBuckets(projectId, token, waitDone, options).then(() => {
 									let bucketName, bucketLocation
 									return _chooseBucketName()
 										.then(answer => {
@@ -466,10 +419,11 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									console.log(' ')
 
 									const choices = [
-										{ name: ' 1. New DB', value: 'db' },
-										{ name: ' 2. New DB Table', value: 'table' }
+										{ name: ' 1. Create a new DB', value: 'db' },
+										{ name: ' 2. Create a new DB Table', value: 'table' },
+										{ name: ' 2. Create a new DB Table Using Bucket\'s Data', value: 'table-bucket' }
 									]
-									return promptList({ message: 'What do you want to add? ', choices, separator: false }).then(answer => {
+									return promptList({ message: 'What do you want to do? ', choices, separator: false }).then(answer => {
 										if (!answer)
 											return
 										else if (answer == 'db') {
@@ -486,15 +440,19 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 												})
 											}) 
 										} else {
+											const createTableFromBucket = answer == 'table-bucket'
 											const choices = dbs.map((db,idx) => ({ name: ` ${bold(idx+1)}. ${bold(db.id.split(':').slice(-1)[0])}`, value: db.id.split(':').slice(-1)[0] }))
-											return promptList({ message: 'Select a DB:', choices, separator: false }).then(answer => {
-												if (!answer)
+											return promptList({ message: 'Which DB do you want to add a table to?', choices, separator: false }).then(dbName => {
+												if (!dbName)
 													return 
-												waitDone = wait(`Loading all tables in DB ${bold(answer)} in project ${bold(projectId)}`)
-												return gcp.bigQuery.table.list(projectId, answer, token, options).then(({ data }) => {
+												waitDone = wait(`Loading all tables in DB ${bold(dbName)} in project ${bold(projectId)}`)
+												return Promise.all([
+													gcp.bigQuery.table.list(projectId, dbName, token, options),
+													_listBuckets(projectId, token, waitDone, merge(options, { quiet: true }))
+												]).then(([{ data }, buckets=[]]) => {
 													waitDone()
-													const title = `Tables In DB ${answer} In Project ${projectId}`
-													console.log(`\nTables In DB ${bold(answer)} In Project ${bold(projectId)}`)
+													const title = `Tables In DB ${dbName} In Project ${projectId}`
+													console.log(`\nTables In DB ${bold(dbName)} In Project ${bold(projectId)}`)
 													console.log(collection.seed(title.length).map(() => '=').join(''))
 													console.log(' ')
 													if (data.length == 0)
@@ -505,23 +463,61 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 															name: c.id.split('.').slice(-1)[0],
 															created: (new Date(c.creationTime * 1)).toString()
 														})), { indent: '   ' })
-													
+														
 													console.log(' ')
+													if (createTableFromBucket && !buckets.some(x => x)) {
+														console.log(warn(`You don't have any bucket in project ${bold(projectId)}. Create a bucket first, and then create a table from that bucket.`))
+														return
+													}
 													
-													return _enterName('Enter a table name: ', 'Invalid table name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ })).then(tableName => {
-														return askQuestion(question(`Are you sure you want to create a new ${bold(tableName)} table in DB ${bold(answer)} in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
-															if (yes == 'n')
+													let tableName, bucketName, bucketPath, bucketLocation
+													return _enterName('Enter a table name: ', 'Invalid table name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ }))
+														.then(answer => {
+															tableName = answer
+															const choices = buckets.map(({ id },idx) => ({ name: ` ${idx+1}. ${id}`, value: id }))
+															return createTableFromBucket
+																? promptList({ message: 'Which bucket do you want to use to create a table from?', choices, separator: false })
+																: 'no-bucket'
+														})
+														.then(answer => {
+															if (!answer)
 																return
+															bucketName = answer
+															return createTableFromBucket
+																? askQuestion(question('Which path are the data located (Optional. Default is empty) ? ')).then(p => p || 'no path')
+																: 'no path'
+														})
+														.then(answer => {
+															if (!answer)
+																return
+															bucketPath = answer == 'no path' ? null : answer
+															bucketLocation = `gs://${bucketName}${bucketPath ? `/${bucketPath.replace(/^\//, '')}` : ''}`
 															
-															waitDone = wait('Creating a new BigQuery table')
-															return gcp.bigQuery.table.create(projectId, answer, tableName, token, options).then(() => {
-																waitDone()
-																console.log(success(`New BigQuery table ${bold(tableName)} successfully created in DB ${bold(answer)} in project ${bold(projectId)}`))
+															const checkIfBucketDataExists = createTableFromBucket
+																? gcp.bucket.content.list(bucketName, token, merge(options, { prefix: bucketPath })).then(({ data=[] }) => data.some(x => x))
+																: Promise.resolve(true)
+
+															return checkIfBucketDataExists.then(yes => {
+																if (!yes) {
+																	console.log(error(`Failed to create new table from bucket's data. The bucket source ${bold(bucketLocation)} dos not contain any data.`))
+																	return
+																}
+																
+																return askQuestion(question(`Are you sure you want to create a new ${bold(tableName)} table in DB ${bold(dbName)} in project ${bold(projectId)} using data located under ${bold(bucketLocation)} (Y/n) ? `)).then(yes => {
+																	if (yes == 'n')
+																		return
+																		
+																	waitDone = wait('Creating a new BigQuery table') 
+																	return (createTableFromBucket 
+																		? gcp.bigQuery.table.createFromBucket(projectId, dbName, tableName, bucketName, bucketPath, token, options)
+																		: gcp.bigQuery.table.create(projectId, dbName, tableName, token, options)).then(() => {
+																		waitDone()
+																		console.log(success(`New BigQuery table ${bold(tableName)} successfully created in DB ${bold(dbName)} in project ${bold(projectId)}`))
+																	})
+																})
 															})
 														})
-													}) 
 												})
-
 											})
 										}
 									})
@@ -564,6 +560,70 @@ const _chooseBucketName = () => _enterName('Enter a bucket name: ', 'The bucket 
 				return answer
 		})
 	})
+
+/**
+ * [description]
+ * @param  {[type]} 	projectId 		[description]
+ * @param  {[type]} 	token     		[description]
+ * @param  {[type]} 	waitDone  		[description]
+ * @param  {Boolean} 	options.quiet   [description]
+ * @return {[type]}           			[description]
+ */
+const _listBuckets = (projectId, token, waitDone, options={}) => Promise.resolve(null).then(() => {
+	if (!options.quiet) waitDone = wait(`Loading Buckets info from project ${bold(projectId)}`)
+	return gcp.bucket.list(projectId, token, options).then(({ data: buckets=[] }) => {
+		if (!options.quiet) waitDone()
+		const nowDeployments = buckets.filter(b => b.id.indexOf('now-deployments-') == 0) // legacy
+		const webfuncDeployments = buckets.filter(b => b.id.indexOf('webfunc-deployment-') == 0) // legacy
+		const neapupDeployments = buckets.filter(b => b.id.indexOf('neapup-v') == 0)
+		const normalBuckets = buckets.filter(b => {
+			return b.id.indexOf('now-deployments-') != 0
+			&& b.id.indexOf('webfunc-deployment-') != 0
+			&& b.id.indexOf('neapup-v') != 0
+		})
+		if (nowDeployments.length > 0) {
+			let lastDeployment = nowDeployments.slice(-1)[0]
+			lastDeployment.id = 'now-deployments-xxx'
+			lastDeployment.deploymentsCount = nowDeployments.length
+			normalBuckets.push(lastDeployment)
+		}
+		if (webfuncDeployments.length > 0) {
+			let lastDeployment = webfuncDeployments.slice(-1)[0]
+			lastDeployment.id = 'webfunc-deployments-YYYYMMDD-hhmmss-xxxxxxxxx'
+			lastDeployment.deploymentsCount = webfuncDeployments.length
+			normalBuckets.push(lastDeployment)
+		}
+		if (neapupDeployments.length > 0) {
+			let lastDeployment = neapupDeployments.slice(-1)[0]
+			lastDeployment.id = 'neapup-vYYYYMMDD-hhmmss-x'
+			lastDeployment.deploymentsCount = neapupDeployments.length
+			normalBuckets.push(lastDeployment)
+		}
+
+		if (!options.quiet) {
+			const title = `Buckets In Project ${projectId}`
+			console.log(`\nBuckets In Project ${bold(projectId)}`)
+			console.log(collection.seed(title.length).map(() => '=').join(''))
+			console.log(' ')
+			if (!buckets || buckets.length == 0)
+				console.log('   No Buckets found\n')
+			else {
+				displayTable(normalBuckets.map((c, idx) => ({
+					id: idx + 1,
+					name: c.id,
+					location: c.location,
+					type: c.storageClass, 
+					created: c.timeCreated,
+					updated: c.updated,
+					'total similar': c.deploymentsCount || 'N.A.' 
+				})), { indent: '   ' })
+			}
+			console.log(' ')
+		}
+
+		return normalBuckets
+	})
+})
 
 const _findUniqueBucketName = (name='') => {
 	const newName = `${name}-${identity.new({ short: true })}`.toLowerCase()
