@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.31"></a>
+## [0.22.31](https://gitlab.com/neap/neap-manager/compare/v0.22.30...v0.22.31) (2018-11-09)
+
+
+### Features
+
+* Add support to create table from bucket's data in BigQuery ([dfd3317](https://gitlab.com/neap/neap-manager/commit/dfd3317))
+
+
+
 <a name="0.22.30"></a>
 ## [0.22.30](https://gitlab.com/neap/neap-manager/compare/v0.22.29...v0.22.30) (2018-11-06)
 
