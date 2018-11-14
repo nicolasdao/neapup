@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.32"></a>
+## [0.22.32](https://gitlab.com/neap/neap-manager/compare/v0.22.31...v0.22.32) (2018-11-14)
+
+
+### Features
+
+* Add new roles for CloudTasks ([6a786b5](https://gitlab.com/neap/neap-manager/commit/6a786b5))
+
+
+
 <a name="0.22.31"></a>
 ## [0.22.31](https://gitlab.com/neap/neap-manager/compare/v0.22.30...v0.22.31) (2018-11-09)
 
