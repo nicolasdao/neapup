@@ -845,7 +845,6 @@ const deployApp = (projectId, service, version, bucket, zipFile, fileCount, toke
 	const env = ((options.hostingConfig || {}).env || '').toLowerCase().trim() 
 	let appJson = _filterAppJsonFields(Object.assign({}, options.hostingConfig || {}, {
 		id: version,
-		runtime: env == 'flex' || env == 'flexible' ? 'nodejs' : 'nodejs8',
 		deployment: {
 			zip: {
 				sourceUrl: `https://storage.googleapis.com/${bucket}/${zipFile}`,
@@ -853,6 +852,8 @@ const deployApp = (projectId, service, version, bucket, zipFile, fileCount, toke
 			}
 		}
 	}))
+
+	appJson.runtime = appJson.runtime || (env == 'flex' || env == 'flexible' ? 'nodejs' : 'nodejs8')
 
 	const payload = JSON.stringify(appJson, null, ' ')
 

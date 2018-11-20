@@ -127,9 +127,11 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 								h.script.scriptPath = 'auto'
 						})
 
+					hostConfig.runtime = hostConfig.runtime || (deployingToFlex ? 'nodejs' : 'nodejs8' )
+
 					const extraFiles = { 
 						files: [
-							{ name: 'app.yaml', content: appHostingHelper.toYaml(obj.merge(hostConfig, { runtime: 'nodejs' })) },
+							{ name: 'app.yaml', content: appHostingHelper.toYaml(hostConfig) },
 							{ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') }
 						]
 					} 
