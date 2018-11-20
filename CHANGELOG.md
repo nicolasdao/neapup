@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.33"></a>
+## [0.22.33](https://gitlab.com/neap/neap-manager/compare/v0.22.32...v0.22.33) (2018-11-20)
+
+
+### Features
+
+* Remove file size quotas check during deployment + remove merging/diffing app.<env>.json files with the original app.json ([d62d63a](https://gitlab.com/neap/neap-manager/commit/d62d63a))
+
+
+
 <a name="0.22.32"></a>
 ## [0.22.32](https://gitlab.com/neap/neap-manager/compare/v0.22.31...v0.22.32) (2018-11-14)
 
