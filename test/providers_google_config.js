@@ -105,7 +105,7 @@ describe('google', () => {
 		describe('#appJson.get', () => {
 			it('01 - Should get the merged app.json', () => {
 				const mockPath = join(__dirname, './mock/mock_01')
-				return appJson.get(mockPath, { env: 'test' })
+				return appJson.get(mockPath, { env: 'test', envOnly: false })
 					.then(mergedAppJson => {
 						assert.equal(mergedAppJson.name, 'hello', '01')
 						assert.equal(mergedAppJson.runtime, 'nodejs', '02')

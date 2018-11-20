@@ -12,7 +12,7 @@ const path = require('path')
 const clipboardy = require('clipboardy')
 const gcp = require('../gcp')
 const { error, wait, success, link, bold, info, note, warn, askQuestion, question, debugInfo, cmd, promptList } = require('../../../utils/console')
-const { zipToBuffer, getAppJsonFiles, exists: fileExists, checkStandardEnvFilesQuotas } = require('../../../utils/files')
+const { zipToBuffer, getAppJsonFiles, exists: fileExists } = require('../../../utils/files')
 const { promise, date, obj, collection }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
@@ -118,7 +118,6 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 					const hostConfig = appJsonConfig.hosting || {}
 					options.costReduction = hostConfig['cost-reduction']
 					const hostingEnv = (hostConfig.env || '').trim().toLowerCase()
-					const fName = hostConfig.env ? `app.${hostConfig.env}.json` : 'app.json'
 					deployingToFlex = hostingEnv == 'flex' || hostingEnv == 'flexible' 
 					// 2.2. If the target is a standard env, then make sure that all script.scriptPath are set to 'auto'. That's
 					// 		a Google constraint
@@ -134,41 +133,11 @@ const deploy = (options={}) => Promise.resolve(null).then(() => {
 							{ name: 'app.json', content: JSON.stringify(appJsonConfig, null, ' ') }
 						]
 					} 
-					// 2.3. Check quotas for Standard env.
-					const checkQuotas = deployingToFlex || (hostConfig.ignore && hostConfig.ignore['quotas-warning'])
-						? Promise.resolve(null)
-						: Promise.resolve(null).then(() => {
-							waitDone = wait('Checking project does not exceed the Standard environment quotas...')
-							return checkStandardEnvFilesQuotas(options.projectPath)
-								.catch(e => {
-									waitDone()
-									console.log(warn(e.message))
-									if (e.folders) {
-										console.log(info('Folders exceeding limit:'))
-										e.folders.forEach(x => console.log(`  - ${x.folder}: ${x.files}`))
-									}
 
-									return askQuestion(question('Do you wish to continue (Y/n) ? ')).then(yes => {
-										if (yes == 'n')
-											process.exit()
-
-										console.log(note(`To ignore this warning next time, add this config to your ${bold(fName)}: "hosting": { "ignore": { "quotas-warning": true } }`))
-										return { error: true }
-									})
-								})
-								.then(res => {
-									waitDone()
-									if (!res || !res.error)
-										console.log(success('Project respects Standard environment limits'))
-								})
-						})
-
-					// 2.4. Zip
-					return checkQuotas.then(() => {
-						const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
-						waitDone = wait(msg)
-						return zipToBuffer(options.projectPath, obj.merge(options, extraFiles, { build: hostConfig.build }))
-					})
+					// 2.3. Zip
+					const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
+					waitDone = wait(msg)
+					return zipToBuffer(options.projectPath, obj.merge(options, extraFiles, { build: hostConfig.build }))
 				})
 				.then(({ filesCount, buffer }) => {
 					waitDone()

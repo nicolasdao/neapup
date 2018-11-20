@@ -155,7 +155,7 @@ const resetHostingConfig = (hostingConfig) => {
  * [description]
  * @param  {String}  appPath 			[description]
  * @param  {String}  options.env 		[description]
- * @param  {Boolean} options.envOnly 	[description]
+ * @param  {Boolean} options.envOnly 	Default true.
  * @return {[type]}         			[description]
  */
 const getHosting = (appPath, options={}) => getAppJson(appPath, options).then(appJson => (appJson || {}).hosting || {})
@@ -164,14 +164,15 @@ const getHosting = (appPath, options={}) => getAppJson(appPath, options).then(ap
  * [description]
  * @param  {String}  appPath 			[description]
  * @param  {String}  options.env 		[description]
- * @param  {Boolean} options.envOnly 	[description]
+ * @param  {Boolean} options.envOnly 	Default true.
  * @return {[type]}         			[description]
  */
 const getAppJson = (appPath, options={}) => {
+	const { envOnly=true } = options
 	const main = file.getJson(path.join(appPath, 'app.json')).then(config => config || {})
 	const second = options.env ? file.getJson(path.join(appPath, `app.${options.env}.json`)).then(config => config || {}) : Promise.resolve({})
 	return Promise.all([main, second]).then(values => {
-		if (options.env && options.envOnly) 
+		if (options.env && envOnly) 
 			return values[1] || {}
 		else
 			return mergeAppJsons(...values) || {}
@@ -182,6 +183,15 @@ const hostingExists = (appPath, options={}) => {
 	return getHosting(appPath, obj.merge(options, { envOnly: true })).then(hosting => hosting && Object.keys(hosting).length > 0) 
 }
 
+/**
+ * [description]
+ * @param  {[type]} hosting 			[description]
+ * @param  {[type]} appPath 			[description]
+ * @param  {String} options.env 		[description]
+ * @param  {Boolean} options.diffOnly 	Default is false, which means that the entire hosting config is stored rather than the
+ *                                     	diff with 'app.json'
+ * @return {[type]}         			[description]
+ */
 const saveHosting = (hosting, appPath, options={}) => Promise.all([
 	file.getJson(path.join(appPath, 'app.json')),
 	options.env ? file.getJson(path.join(appPath, `app.${options.env}.json`)) : Promise.resolve(null)
@@ -210,7 +220,7 @@ const saveHosting = (hosting, appPath, options={}) => Promise.all([
 				: Promise.resolve(null)
 
 			return action.then(() => {
-				const hostingDiff = obj.diff(appJson, hosting)
+				const hostingDiff = options.diffOnly ? obj.diff(appJson, hosting) : hosting
 				let updatedConfig = configs[1] || {}
 				updatedConfig.hosting = hostingDiff
 				return file.write(path.join(appPath, `app.${options.env}.json`), JSON.stringify(updatedConfig, null, '  '))
@@ -218,6 +228,14 @@ const saveHosting = (hosting, appPath, options={}) => Promise.all([
 		}
 	})
 
+/**
+ * [description]
+ * @param  {[type]} appJson 			[description]
+ * @param  {[type]} appPath 			[description]
+ * @param  {Object} options.diffOnly 	[description]
+ * @param  {Object} options.env 		[description]
+ * @return {[type]}         			[description]
+ */
 const saveAppJson = (appJson, appPath, options={}) => 
 	file.getJson(path.join(appPath, 'app.json'))
 		.then(mainAppJson => {
@@ -240,12 +258,20 @@ const saveAppJson = (appJson, appPath, options={}) =>
 					: Promise.resolve(null)
 
 				return action.then(() => {
-					const hostingDiff = obj.diff(mainAppJson, appJson)
+					const hostingDiff = options.diffOnly ? obj.diff(mainAppJson, appJson) : appJson
 					return file.write(path.join(appPath, `app.${options.env}.json`), JSON.stringify(hostingDiff, null, '  '))
 				})
 			}
 		})
 
+/**
+ * [description]
+ * @param  {[type]} hosting 			[description]
+ * @param  {[type]} appPath 			[description]
+ * @param  {Object} options.diffOnly 	[description]
+ * @param  {Object} options.env 		[description]
+ * @return {[type]}         			[description]
+ */
 const updateHosting = (hosting, appPath, options={}) => !appPath ? Promise.resolve(null) : Promise.all([
 	file.getJson(path.join(appPath, 'app.json')),
 	options.env ? file.getJson(path.join(appPath, `app.${options.env}.json`)) : Promise.resolve(null)
@@ -273,7 +299,7 @@ const updateHosting = (hosting, appPath, options={}) => !appPath ? Promise.resol
 			return action.then(() => {
 				let updatedConfig = configs[1] || {}
 				updatedConfig.hosting = obj.merge(updatedConfig.hosting, hosting || {})
-				const hostingDiff = obj.diff(appJson, updatedConfig.hosting)
+				const hostingDiff = options.diffOnly ? obj.diff(appJson, updatedConfig.hosting) : updatedConfig.hosting
 				updatedConfig.hosting = hostingDiff
 				return file.write(path.join(appPath, `app.${options.env}.json`), JSON.stringify(updatedConfig, null, '  '))
 			})
