@@ -408,7 +408,6 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									if (!dbs || dbs.length == 0) {
 										console.log('   No Databases found\n')
 										console.log(' ')
-										return
 									}
 
 									displayTable(dbs.map((c,idx) => ({
