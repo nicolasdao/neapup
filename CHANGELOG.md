@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.36"></a>
+## [0.22.36](https://gitlab.com/neap/neap-manager/compare/v0.22.35...v0.22.36) (2018-11-21)
+
+
+### Bug Fixes
+
+* Cannot add a new bigquery DB when there are no DB at all ([0eeba08](https://gitlab.com/neap/neap-manager/commit/0eeba08))
+
+
+
 <a name="0.22.35"></a>
 ## [0.22.35](https://gitlab.com/neap/neap-manager/compare/v0.22.34...v0.22.35) (2018-11-21)
 
