@@ -592,7 +592,7 @@ const deleteBucket = (bucketName, token, options={}) => Promise.resolve(null).th
 	}, null, { verbose: false })
 })
 
-const listBucketLocations = () => Promise.resolve(null).then(() => ({
+const _listBucketLocations = {
 	singleRegions: [
 		{ name: 'northamerica-northeast1 (Montréal)', id: 'northamerica-northeast1' },
 		{ name: 'us-central1 (Iowa)', id: 'us-central1' },
@@ -618,7 +618,8 @@ const listBucketLocations = () => Promise.resolve(null).then(() => ({
 		{ name: 'eu', id: 'eu' },
 		{ name: 'us', id: 'us' },
 	]
-}))
+}
+const listBucketLocations = () => Promise.resolve(null).then(() => _listBucketLocations)
 
 /**
  * [description]
@@ -642,6 +643,12 @@ const listBuckets = (projectId, token, options={}) => Promise.resolve(null).then
 		'Content-Type': 'application/json',
 		Authorization: `Bearer ${token}`
 	}, opts).then(({ status, data }) => {
+		if (data && data.items)
+			data.items = (data.items || []).map(d => {
+				if (_listBucketLocations.multiRegions.find(({ name }) => name == (d.location || '').toLowerCase()) && d.storageClass && d.storageClass.toLowerCase() == 'standard')
+					d.storageClass = 'MULTI-REGION'
+				return d
+			})
 		const nextPageToken = (data || {}).nextPageToken
 		const buckets = (data || {}).items || []
 		if (nextPageToken) {

@@ -539,7 +539,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
 
-const _chooseBucketName = () => _enterName('Enter a bucket name: ', 'The bucket name is required')
+const _chooseBucketName = () => _enterName('Enter a bucket name: ', 'The bucket name is required', { rule: /^[a-zA-Z0-9\-_.]+$/ })
 	.then(answer => {
 		let waitDone = wait('Checking name uniqueness')
 		return Promise.all([gcp.bucket.exists(answer), _findUniqueBucketName(answer)]).then(([yes, uniqueName]) => {
