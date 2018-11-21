@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.22.35"></a>
+## [0.22.35](https://gitlab.com/neap/neap-manager/compare/v0.22.34...v0.22.35) (2018-11-21)
+
+
+### Bug Fixes
+
+* Multi-regions buckets are shown as standard + allow to add '.' in bucket names ([3a245aa](https://gitlab.com/neap/neap-manager/commit/3a245aa))
+
+
+
 <a name="0.22.34"></a>
 ## [0.22.34](https://gitlab.com/neap/neap-manager/compare/v0.22.33...v0.22.34) (2018-11-20)
 
