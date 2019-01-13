@@ -14,12 +14,13 @@
 // 	- Google Bucket IAM: 			https://cloud.google.com/storage/docs/json_api/v1/buckets/setIamPolicy
 // 	- Google Bucket API: 			https://cloud.google.com/storage/docs/json_api/v1/buckets
 // 	- Google BigQuery Transfer API: https://cloud.google.com/bigquery/docs/cloud-storage-transfer
+// 	- Google Site Verification: 	https://developers.google.com/site-verification/v1/getting_started
 
 const opn = require('opn')
 const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
 const fetch = require('../../utils/fetch')
 const { info, highlight, cmd, link, debugInfo, bold, error } = require('../../utils/console')
-const { promise, identity, collection, obj: objectHelper, yaml } = require('../../utils/index')
+const { promise, identity, collection, obj: objectHelper, yaml, validate } = require('../../utils/index')
 
 const IAM_SERVICE_API = 'iam.googleapis.com'
 
@@ -68,6 +69,10 @@ const BIGQUERY_DB_URL = (projectId, dbId) => `https://www.googleapis.com/bigquer
 const BIGQUERY_TABLES_URL = (projectId, dbId, tableId) => `${BIGQUERY_DB_URL(projectId, dbId)}/tables${tableId ? `/${tableId}`: ''}`
 const BIGQUERY_TRANSFER_URL = (projectId, locationId, configId) => `https://bigquerydatatransfer.googleapis.com/v1/projects/${projectId}/locations/${locationId}/transferConfigs${configId ? `/${configId}`: ''}`
 const BIGQUERY_JOBS_URL = projectId => `https://www.googleapis.com/bigquery/v2/projects/${projectId}/jobs`
+// SITE VERIFICATIONS
+const SITEVERIF_BASE_URL = () => 'https://www.googleapis.com/siteVerification/v1'
+const SITEVERIF_TOKEN_URL = () => `${SITEVERIF_BASE_URL()}/token`
+const SITEVERIF_RESOURCES_URL = resourceId => `${SITEVERIF_BASE_URL()}/webResource${resourceId ? `/${resourceId}` : ''}`
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -95,6 +100,148 @@ const _validateRequiredParams = (params={}) => Object.keys(params).forEach(p => 
 //////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											START - SITE VERIFICATION APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const listAllVerifiedResources = (token) => Promise.resolve(null).then(() => {
+	_validateRequiredParams({ token })
+
+	return fetch.get(SITEVERIF_RESOURCES_URL(), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}).then(res => {
+		if (res && res.data && res.data.items)
+			res.data.items = collection.sortBy(res.data.items, x => (x.site || {}).type || '')
+		return res
+	})
+})
+
+/**
+ * Returns an asset used to verify a domain or a website.
+ *  
+ * @param  {[type]} method  	Valid values are: FILE, META, ANALYTICS, TAG_MANAGER, DNS_TXT, DNS_CNAME
+ * @param  {[type]} domain 		If domain, make sure there is no protocol (e.g., neap.co)
+ * @param  {[type]} website 	If website, make sure there is a protocol (e.g., https://neap.co)
+ * @param  {[type]} token 		OAuth 2.0 token
+ * @return {[type]}         	[description]
+ */
+const _allowedVerificationMethods = { FILE: true, META: true, ANALYTICS: true, TAG_MANAGER: true, DNS_TXT: true, DNS_CNAME: true }
+const getSiteVerificationToken = ({ method, domain, website }, token) => Promise.resolve(null).then(() => {
+	const websiteOrDomain = domain || website
+	_validateRequiredParams({ method, websiteOrDomain, token })
+
+	if (!_allowedVerificationMethods[method])
+		throw new Error(`Wrong argument 'method' ${method}. Valid values are: FILE, META, ANALYTICS, TAG_MANAGER, DNS_TXT, DNS_CNAME`)
+
+	if (domain && method != 'DNS_TXT' && method != 'DNS_CNAME')
+		throw new Error(`Wrong argument 'method' ${method}. When validating a domain ownership, the only valid methods are: DNS_TXT, DNS_CNAME`)
+
+	const payload = {
+		verificationMethod: method,
+		site: {
+			identifier: websiteOrDomain,
+			type: domain ? 'INET_DOMAIN' : 'SITE'
+		}
+	}
+
+	return fetch.post(SITEVERIF_TOKEN_URL(), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify(payload))
+})
+
+const verifyResource = ({ method, domain, website }, token) => Promise.resolve(null).then(() => {
+	const websiteOrDomain = domain || website
+	_validateRequiredParams({ method, websiteOrDomain, token })
+
+	if (!_allowedVerificationMethods[method])
+		throw new Error(`Wrong argument 'method' ${method}. Valid values are: FILE, META, ANALYTICS, TAG_MANAGER, DNS_TXT, DNS_CNAME`)
+
+	if (domain && method != 'DNS_TXT' && method != 'DNS_CNAME')
+		throw new Error(`Wrong argument 'method' ${method}. When validating a domain ownership, the only valid methods are: DNS_TXT, DNS_CNAME`)
+
+	const payload = {
+		site: {
+			identifier: websiteOrDomain,
+			type: domain ? 'INET_DOMAIN' : 'SITE'
+		}
+	}
+
+	return fetch.post(`${SITEVERIF_RESOURCES_URL()}?verificationMethod=${method}`, {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, JSON.stringify(payload), { verbose: false })
+})
+
+const addOwnerToResource = ({ resourceId, owner }, token) => listAllVerifiedResources(token).then(({ data }) => {
+	_validateRequiredParams({ resourceId, owner, token })
+	if (!validate.email(owner))
+		throw new Error(`'owner' is an invalid email(${owner})`)
+
+	const items = (data || {}).items || []
+	if (items.length == 0)
+		throw new Error('No web resources found for this current account')
+
+	const resource = items.find(i => i.id == resourceId)
+	if (!resource)
+		throw new Error(`The resource with id '${resourceId}' cannot be found`)		
+
+	resource.owners = resource.owners || []
+	if (resource.owners.some(o => o == owner))
+		return { status: 200, data: { message: `Email ${owner} was already an owner of resource ${resourceId}. No action required.` } }
+
+	resource.owners.push(owner)
+
+	const payload = JSON.stringify(resource)
+
+	return fetch.put(SITEVERIF_RESOURCES_URL(resourceId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, payload, { verbose: false })
+})
+
+const removeOwnerFromResource = ({ resourceId, owner }, token) => listAllVerifiedResources(token).then(({ data }) => {
+	_validateRequiredParams({ resourceId, owner, token })
+	if (!validate.email(owner))
+		throw new Error(`'owner' is an invalid email(${owner})`)
+
+	const items = (data || {}).items || []
+	if (items.length == 0)
+		throw new Error('No web resources found for this current account')
+
+	const resource = items.find(i => i.id == resourceId)
+	if (!resource)
+		throw new Error(`The resource with id '${resourceId}' cannot be found`)		
+
+	resource.owners = resource.owners || []
+	if (!resource.owners.some(o => o == owner))
+		return { status: 200, data: { message: `Email ${owner} was not an owner of resource ${resourceId}. No action required.` } }
+
+	resource.owners = resource.owners.filter(o => o != owner)
+
+	const payload = JSON.stringify(resource)
+
+	return fetch.put(SITEVERIF_RESOURCES_URL(resourceId), {
+		'Content-Type': 'application/json',
+		Authorization: `Bearer ${token}`
+	}, payload, { verbose: false })
+})
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////
+//////											END - SITE VERIFICATION APIS
+//////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2486,6 +2633,13 @@ module.exports = {
 		list: listServiceAPIs,
 		enable: enableServiceAPI,
 		disable: disableServiceAPI
+	},
+	siteVerification: {
+		list: listAllVerifiedResources,
+		getToken: getSiteVerificationToken,
+		verify: verifyResource,
+		addOwner: addOwnerToResource,
+		removeOwner: removeOwnerFromResource
 	},
 	build: {
 		'get': getBuild

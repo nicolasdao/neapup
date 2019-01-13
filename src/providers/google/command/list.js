@@ -12,7 +12,7 @@ const path = require('path')
 const gcp = require('../gcp')
 const utils = require('../utils')
 const { bold, gray, wait, error, promptList, warn, info, link, displayTable } = require('../../../utils/console')
-const { collection, obj: { merge }, file } = require('../../../utils')
+const { collection, obj: { merge }, file, console:{ displayTable: displayTableV2, displayTitle } } = require('../../../utils')
 const projectHelper = require('../project')
 const { hosting: hostingHelper } = require('../config')
 
@@ -25,14 +25,15 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. Projects', value: 'projects' },
-					{ name: ' 2. Services', value: 'services' },
-					{ name: ' 3. Custom Domains', value: 'domains' },
-					{ name: ' 4. Cron Jobs', value: 'cron' },
-					{ name: ' 5. Task Queues', value: 'queue' },
-					{ name: ' 6. Buckets', value: 'bucket' },
-					{ name: ' 7. BigQuery', value: 'bigquery' },
-					{ name: ' 8. Accesses', value: 'access' },
+					{ name: ' 01. Projects', value: 'projects' },
+					{ name: ' 02. Services', value: 'services' },
+					{ name: ' 03. Custom Domains', value: 'domains' },
+					{ name: ' 04. Cron Jobs', value: 'cron' },
+					{ name: ' 05. Task Queues', value: 'queue' },
+					{ name: ' 06. Buckets', value: 'bucket' },
+					{ name: ' 07. BigQuery', value: 'bigquery' },
+					{ name: ' 08. Accesses', value: 'access' },
+					{ name: ' 09. Website or Domain Ownership', value: 'webownership' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -316,6 +317,27 @@ const listStuffs = (options={}) => utils.project.confirm(merge(options, { select
 									console.log(' ')
 								})
 							})
+					else if (answer == 'webownership') {
+						waitDone = wait('Listing all digital properties (i.e., domains and websites)...')
+						return gcp.siteVerification.list(token).then(({data}) => {
+							waitDone()
+							const items = (data || {}).items || []
+							console.log(items)
+							displayTitle('Domain & Website Ownerships')
+							if (!items || items.length == 0)
+								console.log('   No Domain or Website found\n')
+							else {
+								displayTableV2(items.map((c, idx) => ({
+									id: idx + 1,
+									name: decodeURIComponent(c.id),
+									identifier: c.site.identifier,
+									type: c.site.type, 
+									owners: c.owners
+								})), { indent: '   ' })
+							}
+							console.log(' ')
+						})
+					} 
 					else
 						return _listProjectDetails(activeProjectIds, token, options)
 				})

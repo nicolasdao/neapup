@@ -15,5 +15,6 @@ module.exports = Object.assign(core, {
 	promise: require('./promise'),
 	yaml: require('./yaml'),
 	timezone: require('./timezone'),
-	functional: require('./functional')
+	functional: require('./functional'),
+	console: require('./console.v2')
 })

@@ -16,7 +16,8 @@ const {
 	bold, wait, error, promptList, link, askQuestion, 
 	question, success, displayTable, searchAnswer, 
 	info, cmd, warn, displayList } = require('../../../utils/console')
-const { obj: { merge }, file, collection, timezone, validate, identity } = require('../../../utils')
+const { obj: { merge }, file, collection, timezone, validate, identity, console: csle } = require('../../../utils')
+const { displayTable: displayTableV2, displayTitle, cyan } = csle
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
@@ -31,15 +32,16 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 				const activeProjects = data && data.projects && data.projects.length ? data.projects.filter(({ lifecycleState }) => lifecycleState == 'ACTIVE') : []
 				const activeProjectIds = activeProjects.map(p => p.projectId)
 				const topLevelChoices = [
-					{ name: ' 1. Project', value: 'project' },
-					{ name: ' 2. Custom Domain', value: 'domain' },
-					{ name: ' 3. Routing Rule', value: 'routing' },
-					{ name: ' 4. Cron Job', value: 'cron' },
-					{ name: ' 5. Task Queue', value: 'queue' },
-					{ name: ' 6. Bucket', value: 'bucket' },
-					{ name: ' 7. BigQuery', value: 'bigquery' },
-					{ name: ' 8. Access', value: 'access' },
-					{ name: ' 9. Google APIs', value: 'apis' },
+					{ name: ' 01. Project', value: 'project' },
+					{ name: ' 02. Custom Domain', value: 'domain' },
+					{ name: ' 03. Routing Rule', value: 'routing' },
+					{ name: ' 04. Cron Job', value: 'cron' },
+					{ name: ' 05. Task Queue', value: 'queue' },
+					{ name: ' 06. Bucket', value: 'bucket' },
+					{ name: ' 07. BigQuery', value: 'bigquery' },
+					{ name: ' 08. Access', value: 'access' },
+					{ name: ' 09. Google APIs', value: 'apis' },
+					{ name: ' 10. Website or Domain Ownership', value: 'webownership' },
 					{ name: 'Login to another Google Account', value: 'account', specialOps: true }
 				]
 
@@ -420,7 +422,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									const choices = [
 										{ name: ' 1. Create a new DB', value: 'db' },
 										{ name: ' 2. Create a new DB Table', value: 'table' },
-										{ name: ' 2. Create a new DB Table Using Bucket\'s Data', value: 'table-bucket' }
+										{ name: ' 3. Create a new DB Table Using Bucket\'s Data', value: 'table-bucket' }
 									]
 									return promptList({ message: 'What do you want to do? ', choices, separator: false }).then(answer => {
 										if (!answer)
@@ -522,6 +524,111 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 									})
 								})
 							})
+					else if (answer == 'webownership') {
+						waitDone = wait('Listing all digital properties (i.e., domains and websites)...')
+						return gcp.siteVerification.list(token).then(({data}) => {
+							waitDone()
+							const items = (data || {}).items || []
+							displayTitle('Domain & Website Ownerships')
+							if (!items || items.length == 0)
+								console.log('   No Domain or Website found\n')
+							else {
+								displayTableV2(items.map((c, idx) => ({
+									id: idx + 1,
+									name: decodeURIComponent(c.id),
+									identifier: c.site.identifier,
+									type: c.site.type, 
+									owners: c.owners
+								})), { indent: '   ' })
+							}
+							console.log(' ')
+
+							const choices = [
+								{ name: ' 1. New domain or website proof of ownership', value: 'domainOrWebsite' }, 
+								{ name: ' 2. New owner to an existing domain or website', value: 'owner' }]
+
+							const nextQuestion = (items.length > 0) 
+								? promptList({ message: 'What do you want to add?', choices, separator: false })
+								: askQuestion(question('Do you want to add a new domain or website proof of ownership (Y/n)? '))
+
+							return nextQuestion.then(answer => {
+								if ((items.length > 0 && !answer) || answer == 'n')
+									return 
+								answer = !answer || answer == 'y' || answer == 'Y' || answer == 'domainOrWebsite' ? 'domainOrWebsite' : 'owner'
+								
+								if (answer == 'domainOrWebsite') {
+									const domainOrWebsiteChoices = [{ name: 'Verify a domain ownership', value: 'domain' }, { name: 'Verify a website ownership', value: 'web' }]
+									let domain, website, method
+									return promptList({ message: 'Choose one of the following options:', choices: domainOrWebsiteChoices, separator: false, noAbort: true }).then(answer => {
+										const getName = answer == 'domain' ? _chooseDomain('Enter a domain name: ') : _chooseWebsite('Enter a website URL: ')
+										return getName.then(name => {
+											const verificationMethods = ['DNS_TXT', 'DNS_CNAME']
+											if (answer == 'domain')
+												domain = name 
+											else {
+												website = name 
+												verificationMethods.push(...['FILE', 'META'])
+											}
+											const verificationChoices = verificationMethods.map((m,idx) => ({ name: ` ${idx+1}. ${m}`, value: m }))
+											return promptList({message: 'Choose a verification method: ', choices: verificationChoices, separator: false, noAbort: true}).then(answer => {
+												waitDone = wait('Retrieving your verification methods details...')
+												method = answer
+												return gcp.siteVerification.getToken({ method, domain, website }, token).then(({ data }) => {
+													waitDone()
+													if (answer == 'DNS_TXT') 
+														console.log(info('Add a new TXT record in your DNS with the following value:'))
+													else if (answer == 'DNS_CNAME') 
+														console.log(info('Add a new CNAME record in your DNS with the following value:')) 
+													else if (answer == 'FILE') 
+														console.log(info('Add the following empty file under your website root:')) 
+													else if (answer == 'META') 
+														console.log(info('Add the following META tag in the header of your home page:')) 
+
+													console.log(info(`  ${cyan(data.token)}`))
+													console.log(' ')
+													return askQuestion('Once that\'s done, come back here and press ENTER').then(() => getToken(options)).then(token => {
+														waitDone = wait(`Verifying your ${domain ? 'domain' : 'website'} ownership now...`)
+														return gcp.siteVerification.verify({ method, domain, website }, token)
+															.then(() => {
+																waitDone()
+																console.log(success(`Awesome! Your ${domain ? 'domain' : 'website'} ownership for ${domain || website} has been successfully confirmed.`))
+															})
+															.catch(err => {
+																waitDone()
+																const e = JSON.parse(err.message)
+																console.log(error(e.message))
+																if (method == 'DNS_TXT' || method == 'DNS_CNAME')
+																	console.log(warn('Your DNS change may take a few hours to propagate. If you\'re sure you\'ve added the record properly, maybe wait a couple of hours before verifying again.'))
+															})
+													})
+												})
+											})
+										})
+									})
+								} else {
+									const webResourceChoices = items.map((i,idx) => ({ name: ` ${idx+1}. ${decodeURIComponent(i.id)}`, value: i.id }))
+									return promptList({message: 'Select web resource:', choices: webResourceChoices, separator: false}).then(resourceId => {
+										if (!resourceId)
+											return 
+										return _chooseEmail('Enter the new owner\'email: ', 'An email is required to add a new owner.').then(owner => {
+											return askQuestion(question(`Are you sure you want to add ${cyan(owner)} as an owner of ${cyan(decodeURIComponent(resourceId))} (Y/n)? `)).then(yes => {
+												if (yes == 'n')
+													return
+												waitDone = wait('Setting up web resource ownership...')
+												return gcp.siteVerification.addOwner({ resourceId, owner }, token).then(() => {
+													waitDone()
+													console.log(success(`Congrats! ${bold(owner)} has successfully been added as an owner to web resource ${bold(decodeURIComponent(resourceId))}.`))
+												})
+											})
+										})
+									})
+								}
+							})
+						})
+						// return gcp.siteVerification.getToken('DNS_TXT', 'rehost.co', token)
+						// return gcp.siteVerification.list(token)
+						// 	.then(({data}) => console.log(data.items))
+					}
 					else if (answer == 'routing') 
 						console.log(error('Operation not supported yet. Coming soon...'))
 					else if (answer == 'account')
@@ -694,7 +801,7 @@ const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(nu
 })
 
 const _addUsers = (projectId, token, waitDone, users, options) => 
-	_enterEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: users.map(d => d.user) })
+	_chooseEmail('Enter your Collaborator\'s email: ', 'An email is required to add a new Collaborator.', { blacklist: users.map(d => d.user) })
 		.then(email => _chooseAccountRoles({ required: true }).then(roles => ({ roles, email })))
 		.then(({ roles, email }) => {
 			if (!email)
@@ -1059,25 +1166,54 @@ const _enterName = (q, r, options={}) => askQuestion(question(q)).then(answer =>
 	}
 })
 
-const _enterEmail = (q, r, options={}) => askQuestion(question(q)).then(answer => {
+const _chooseEmail = (q, r, options={}) => askQuestion(question(q)).then(answer => {
 	if (!answer && options.default)
 		return options.default
 	else if (!answer) {
 		console.log(error(r))
-		return _enterEmail(q, r, options)
+		return _chooseEmail(q, r, options)
 	} else if (validate.email(answer)) {
 		if (options.blacklist && options.blacklist.length > 0) {
 			const email = answer.toLowerCase().trim()
 			if (options.blacklist.some(e => e && e.toLowerCase().trim() == email)) {
 				console.log(error('This email is already used by an existing Collaborator'))
-				return _enterEmail(q, r, options)
+				return _chooseEmail(q, r, options)
 			}
 		}
 		return answer
 	}
 	else {
 		console.log(error('Invalid email.'))
-		return _enterEmail(q, r, options)
+		return _chooseEmail(q, r, options)
+	}
+})
+
+const _chooseDomain = (q) => askQuestion(question(q)).then(n => {
+	if (!n) {
+		console.log(error('The domain is required. Please enter one (e.g., neapup.co)'))
+		return _chooseDomain(q)
+	} else {
+		n = n.trim()
+		if (/:\/\//.test(n)) {
+			console.log(error('Invalid domain name. Enter domain only. Do not include any protocol (e.g., neapup.co)'))
+			return _chooseDomain(q)
+		} else
+			return n
+	}
+})
+
+const _chooseWebsite = (q) => askQuestion(question(q)).then(n => {
+	if (!n) {
+		console.log(error('The website is required. Please enter one (e.g., https://neapup.co)'))
+		return _chooseDomain(q)
+	} else {
+		n = n.trim()
+		if (/^(https|http):\/\//.test(n)) 
+			return n
+		else {
+			console.log(error('Invalid website. You must include the protocol (i.e., http:// or https://). Example: https://neapup.co'))
+			return _chooseDomain(q)
+		} 
 	}
 })
 

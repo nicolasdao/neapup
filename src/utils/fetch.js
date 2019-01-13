@@ -94,6 +94,15 @@ const postData = (url, headers={}, body, options={ verbose:true }) => Promise.re
 		.catch(e => errorHandler(e, url, () => postData(url, headers, body, { debug, verbose, retryCount }), retryCount, { debug }))
 })
 
+const putData = (url, headers={}, body, options={ verbose:true }) => Promise.resolve(null).then(() => {
+	let { debug=false, verbose=true, retryCount=0 } = options || {}
+	retryCount++
+	return fetch(url, { method: 'PUT', headers, body })
+		.then(res => processResponse(res, options))
+		.then(res => errorHandler200(res, { debug, verbose, retryCount }))
+		.catch(e => errorHandler(e, url, () => postData(url, headers, body, { debug, verbose, retryCount }), retryCount, { debug }))
+})
+
 const deleteData = (url, headers={}, body, options={ verbose:true }) => Promise.resolve(null).then(() => {
 	let { debug=false, verbose=true, retryCount=0 } = options || {}
 	retryCount++
@@ -115,6 +124,7 @@ const patchData = (url, headers={}, body, options={ verbose:true }) => Promise.r
 module.exports = {
 	'get': getData,
 	post: postData,
+	put: putData,
 	delete: deleteData,
 	patch: patchData
 }
