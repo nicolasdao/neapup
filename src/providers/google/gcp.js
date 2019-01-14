@@ -1648,14 +1648,22 @@ const getBuild = (projectId, buildId, token, options={}) => Promise.resolve(null
 // As of Oct 2018, the Cloud Task API is in beta and only support the following locations:
 // us-east1, us-central1, europe-west1, and asia-northeast1
 const AVAILABLE_TASK_API_REGIONS = {
-	'us-central1': 'us-central1',
-	'us-central': 'us-central1',
-	'us-east1': 'us-east1',
-	'us-east': 'us-east1',
-	'europe-west1': 'europe-west1',
-	'europe-west': 'europe-west1',
+	'asia-east2': 'asia-east2',
+	'asia-northeast': 'asia-northeast1',
 	'asia-northeast1': 'asia-northeast1',
-	'asia-northeast': 'asia-northeast1'
+	'asia-south1': 'asia-south1',
+	'australia-southeast1': 'australia-southeast1',
+	'europe-west': 'europe-west1',
+	'europe-west1': 'europe-west1',
+	'europe-west2': 'europe-west2',
+	'europe-west3': 'europe-west3',
+	'northamerica-northeast1': 'northamerica-northeast1',
+	'southamerica-east1': 'southamerica-east1',
+	'us-central': 'us-central1',
+	'us-central1': 'us-central1',
+	'us-east': 'us-east1',
+	'us-east1': 'us-east1',
+	'us-east4': 'us-east4'
 }
 
 const listTaskQueues = (projectId, token, options={}) => getAppDetails(projectId, token, options)
