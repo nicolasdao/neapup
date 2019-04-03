@@ -348,14 +348,20 @@ const _helpConfiguringAppJson = (projectId, token, options={}) => co(function *(
 
 	// 3. Confirm deployment configuration
 	if (hostingConfig.type == 'static-website') {
-		const allSettingsAlreadySet = hostingConfig.bucketId && hostingConfig.locationId
+		const allSettingsAlreadySet = hostingConfig.bucketId
+		let websiteSettings
 		if (!allSettingsAlreadySet) { 
 			const projectDetails = yield _promptUserToConfirmProjectAndChooseBucket(projectId)
-			return projectDetails
+			yield appHosting.update({ bucketId:projectDetails.bucketId }, options.projectPath, options)
+			websiteSettings = obj.merge(projectDetails, { type:hostingConfig.type })
 		} else {
 			const token = yield getToken()
-			return { projectId, bucketId: hostingConfig.bucketId, locationId: hostingConfig.locationId, token, type: hostingConfig.type }
+			websiteSettings = { projectId, bucketId: hostingConfig.bucketId, locationId: hostingConfig.locationId, token, type: hostingConfig.type }
 		}
+
+		yield bucketHelper.updateWebsiteConfig({ projectId, bucketId:websiteSettings.bucketId, token, websiteConfig: hostingConfig.website, silent:false })
+
+		return websiteSettings
 	} else {
 		// 3.2. App Engine Check - Testing that the App Engine exists. Also give a chance to the user to re-configure it
 		
@@ -376,85 +382,6 @@ const _helpConfiguringAppJson = (projectId, token, options={}) => co(function *(
 	}
 })
 
-// const _helpConfiguringAppJson = (projectId, token, options={}) => (options.projectPath ? appHosting.get(options.projectPath, options) : Promise.resolve({}))
-// .then(hostingConfig => {
-// 	// If there are no app.json, then explicitely help create one
-// 	if (!hostingConfig || Object.keys(hostingConfig).length == 0) {
-// 		if (options.debug)
-// 			console.log(debugInfo(`There are no ${options.env ? `app.${options.env}.json` : 'app.json'} in your project. Creating one now and the confirming the details are ok.`))
-// 		options.overrideHostingConfig = true
-// 	}
-// 	return _initializeAppJson(projectId, hostingConfig, options)
-// })
-// .then((hostingConfig={}) => {
-// 	const appProjectId = hostingConfig.projectId
-// 	const appService = hostingConfig.service || 'default'
-
-// 	if (appProjectId) {
-// 		projectId = appProjectId
-// 		options.selectProject = true
-// 	}
-
-// 	if (options.overrideHostingConfig) 
-// 		options.selectProject = false
-
-// 	////////////////////////////////////////////////
-// 	// 1. Testing that the project is still active
-// 	////////////////////////////////////////////////
-// 	if (options.debug)
-// 		console.log(debugInfo(`Testing Project ${bold(projectId)} still active.`))
-
-// 	const projectStatusDone = wait('Checking Google Cloud Project status.')
-
-// 	return gcp.project.get(projectId, token, options).then(res => {
-// 		const { data } = res || {}
-// 		projectStatusDone()
-// 		return (!data || data.lifecycleState != 'ACTIVE'
-// 			? (() => {
-// 				options.selectProject = false
-// 				console.log(warn(`Project ${bold(projectId)} not found. It is either inactive or you don't have access to it.`))
-// 				const choices = [
-// 					{ name: ' 1. Choose another project', value: 'project' },
-// 					{ name: ' 2. Choose another account', value: 'account' }
-// 				]
-// 				return promptList({ message: 'Choose one of the following options:', choices, separator: false}).then(answer => {
-// 					if (!answer)
-// 						process.exit()
-// 					return getToken(answer == 'account' ? { debug: options.debug, refresh: true, origin: 'Testing project active' } : { debug: options.debug, refresh: false, origin: 'Testing project active' })
-// 						.then(tkn => projectHelper.updateCurrent(options).then(({ project: newProjectId }) => ({ projectId: newProjectId, token: tkn })))
-// 				})
-// 			})() 
-// 			: Promise.resolve({ projectId, token}))
-// 			.then(({ projectId, token }) => {
-// 				if (options.debug)
-// 					console.log(debugInfo(`Testing App Engine for Project ${bold(projectId)} exists.`))
-// 				return { token, projectId }
-// 			})
-// 	})
-// 	////////////////////////////////////////////
-// 	// 2. Testing the App Engine exists
-// 	////////////////////////////////////////////
-// 		.then(({ token, projectId }) => {
-// 			const appEngineStatusDone = wait('Checking App Engine status.')
-// 			return gcp.app.get(projectId, token, options).then(res => {
-// 				const { data } = res || {}
-// 				appEngineStatusDone()
-// 				const locationId = data && data.locationId ? data.locationId : null
-// 				if (locationId) // 3.1. The App Engine exists, so move on.
-// 					return gcp.app.getRegions().then(regions => ({ token, projectId, locationId: regions.find(({ id }) => id == locationId).label }))
-// 				else // 3.2. The App Engine does not exist, so ask the user if one needs to be created now.
-// 					return { token, projectId, locationId }
-// 			})
-// 		})
-// 	////////////////////////////////////////////
-// 	// 3. Prompt user to confirm
-// 	////////////////////////////////////////////
-// 		.then(({ token, projectId, locationId }) => { // 1.2. Prompt to confirm that the hosting destination is correct.
-// 			return _promptUserToConfirmAppSettings(projectId, appService, locationId, token, hostingConfig, options)
-// 		})
-				
-// })
-
 /**
  * 
  * @param {String} projectId 			Original project ID
@@ -473,7 +400,7 @@ const _promptUserToConfirmProjectAndChooseBucket = (projectId, options) => co(fu
 		{ name: ' Choose another project from a different Google account', value: 'switchAccount' }
 	] 
 
-	const projectAnswer = yield promptList({ message: 'What project do you want to use?', projectChoices, separator: false, noAbort: true })
+	const projectAnswer = yield promptList({ message: 'What project do you want to use?', choices:projectChoices, separator: false, noAbort: true })
 	if (projectAnswer == 'switchProject') {
 		const newProject = yield chooseProject(options)
 		projectId = newProject.projectId

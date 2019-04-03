@@ -100,6 +100,7 @@ const deploy = (options={}) => co(function *() {
 		// 		throw new Error('ddqdqwe')
 		// 	})
 		// })
+
 		if (type == 'static-website') {
 			yield _deployWebsite({ projectId, bucketId, locationId, projectPath:fullProjectPath })
 			return 
@@ -443,7 +444,7 @@ const _deployWebsite = ({ projectId, bucketId, locationId, projectPath }) => co(
 	const newFiles = (yield coreHelper.getFiles(projectPath, { deployOnly: true })) || []
 	const filesToDelete = oldFiles.filter(({ file:of }) => !newFiles.some(nf => nf == of))
 	waitDone()
-	
+
 	// 3. Delete certain files
 	if (filesToDelete.length > 0) 
 		yield bucketHelper.delete({ projectId, bucketId, files:filesToDelete.map(x => x.pathname), token, silent:false })

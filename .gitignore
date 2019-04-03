@@ -1,3 +1,5 @@
 *.DS_Store
 *.orig
 node_modules/
+app.json
+.neapignore

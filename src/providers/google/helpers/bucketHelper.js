@@ -2,7 +2,7 @@ const co = require('co')
 const { throttle } = require('core-async')
 const { client } = require('google-cloud-bucket')
 const gcp = require('../gcp')
-const { bold, wait, error, promptList, warn, success } = require('../../../utils/console')
+const { bold, wait, error, promptList, warn, success, info } = require('../../../utils/console')
 const { identity } = require('../../../utils')
 const { enterName } = require('./coreHelper')
 
@@ -43,7 +43,7 @@ const chooseLocation = () => co(function *(){
 		name: ` ${idx+1}. ${l.name}`, value: l.id
 	}))
 	
-	const locationId = yield promptList({ message: `Choose one of the following ${bold(bucketType == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, locationChoices, separator: false })
+	const locationId = yield promptList({ message: `Choose one of the following ${bold(bucketType == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, choices: locationChoices, separator: false })
 	return locationId
 })
 
@@ -146,6 +146,26 @@ const upload = ({ projectId, bucketId, files, token, silent }) => co(function *(
 	}
 })
 
+const updateWebsiteConfig = ({ projectId, bucketId, token, websiteConfig, silent }) => co(function *(){
+	websiteConfig = websiteConfig || {}
+	silent = silent === undefined ? true : silent
+	let waitDone = () => null
+	const storage = client.new({ projectId })
+	const bucket = storage.bucket(bucketId)
+	if (!silent) waitDone = wait(`Checking bucket config...`)
+	const { website={} } = (yield bucket.get({ token })) || {}
+	waitDone()
+	if (websiteConfig.mainPageSuffix != website.mainPageSuffix || websiteConfig.notFoundPage != website.notFoundPage) {
+		if (!silent) { 
+			console.log(info(`Bucket's configuration has changed.`))
+			waitDone = wait(`Updating bucket config now...`)
+		}
+		yield bucket.website.setup(websiteConfig, { token })
+		waitDone()
+		if (!silent) console.log(success(`Bucket's configuration successfully updated.`))
+	}
+})
+
 module.exports = {
 	chooseName,
 	chooseLocation,
@@ -153,7 +173,8 @@ module.exports = {
 	createOrUpdate,
 	listFiles,
 	delete: deleteFiles,
-	upload
+	upload,
+	updateWebsiteConfig
 }
 
 

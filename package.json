@@ -54,7 +54,7 @@
     "core-async": "0.0.5",
     "fs-extra": "^7.0.0",
     "glob": "^7.1.2",
-    "google-cloud-bucket": "^0.12.2",
+    "google-cloud-bucket": "^0.12.3",
     "ignore": "^5.0.6",
     "inquirer": "^6.2.0",
     "inquirer-autocomplete-prompt": "^1.0.1",
