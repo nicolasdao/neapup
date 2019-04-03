@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.23.2"></a>
+## [0.23.2](https://gitlab.com/neap/neap-manager/compare/v0.23.1...v0.23.2) (2019-04-03)
+
+
+### Features
+
+* Automatically display the custom domain after successful deployment if the bucket has been configured as such ([ae4bd90](https://gitlab.com/neap/neap-manager/commit/ae4bd90))
+
+
+
 <a name="0.23.1"></a>
 ## [0.23.1](https://gitlab.com/neap/neap-manager/compare/v0.23.0...v0.23.1) (2019-04-03)
 
