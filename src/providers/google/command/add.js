@@ -16,12 +16,13 @@ const {
 	bold, wait, error, promptList, link, askQuestion, 
 	question, success, displayTable, searchAnswer, 
 	info, cmd, warn, displayList } = require('../../../utils/console')
-const { obj: { merge }, file, collection, timezone, validate, identity, console: csle } = require('../../../utils')
+const { obj: { merge }, file, collection, timezone, validate, console: csle } = require('../../../utils')
 const { displayTable: displayTableV2, displayTitle, cyan } = csle
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
 const api = require('../api')
+const { bucketHelper, coreHelper } = require('../helpers')
 
 const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
@@ -226,7 +227,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													.then(answer => { // 2. Name the queue
 														target = answer 
 														const defaultName = target.toLowerCase()
-														return _enterName(`Enter a queue name (default ${bold(defaultName)}): `, 'The queue name is required.', { default: defaultName })
+														return coreHelper.enterName(`Enter a queue name (default ${bold(defaultName)}): `, 'The queue name is required.', { default: defaultName })
 													})
 													.then(answer => { // 3. Enter a rate unit
 														taskQueueName = answer
@@ -366,18 +367,10 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 							.then(({ projectId, token }) => {
 								return _listBuckets(projectId, token, waitDone, options).then(() => {
 									let bucketName, bucketLocation
-									return _chooseBucketName()
+									return bucketHelper.chooseName()
 										.then(answer => {
 											bucketName = answer 
-											const choices = [{ name: ' 1. Single region (cheaper)', value: 'singleRegions' }, { name: ' 2. Multi regions', value: 'multiRegions' }]
-											return promptList({ message: 'Choose a bucket type:', choices, separator: false, noAbort: true }).then(t => {
-												return gcp.bucket.getRegions().then(regions => regions[t]).then(locations => {
-													const choices = locations.map((l,idx) => ({
-														name: ` ${idx+1}. ${l.name}`, value: l.id
-													}))
-													return promptList({ message: `Choose one of the following ${bold(t == 'singleRegions' ? 'Single Regions' : 'Multi Regions')}:`, choices, separator: false })
-												})
-											})
+											return bucketHelper.chooseLocation()
 										}).then(answer => {
 											if (!answer)
 												return 
@@ -428,7 +421,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 										if (!answer)
 											return
 										else if (answer == 'db') {
-											return _enterName('Enter a DB name: ', 'Invalid DB name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ })).then(answer => {
+											return coreHelper.enterName('Enter a DB name: ', 'Invalid DB name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ })).then(answer => {
 												return askQuestion(question(`Are you sure you want to create a new ${bold(answer)} BigQuery DB in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
 													if (yes == 'n')
 														return
@@ -472,7 +465,7 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 													}
 													
 													let tableName, bucketName, bucketPath, bucketLocation
-													return _enterName('Enter a table name: ', 'Invalid table name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ }))
+													return coreHelper.enterName('Enter a table name: ', 'Invalid table name. No spaces or special special characters except - are allowed.', merge(options, { rule: /^[a-zA-Z0-9_]+$/ }))
 														.then(answer => {
 															tableName = answer
 															const choices = buckets.map(({ id },idx) => ({ name: ` ${idx+1}. ${id}`, value: id }))
@@ -644,29 +637,6 @@ const addStuffs = (options={}) => utils.project.confirm(merge(options, { selectP
 	})
 	.then(() => addStuffs(merge(options, { question: 'What else do you want to add? ' })))
 
-
-const _chooseBucketName = () => _enterName('Enter a bucket name: ', 'The bucket name is required', { rule: /^[a-zA-Z0-9\-_.]+$/ })
-	.then(answer => {
-		let waitDone = wait('Checking name uniqueness')
-		return Promise.all([gcp.bucket.exists(answer), _findUniqueBucketName(answer)]).then(([yes, uniqueName]) => {
-			waitDone()
-			if (yes) {
-				console.log(error(`Sorry, but bucket name ${bold(answer)} is already taken`))
-				const choices = [
-					{ name: ` 1. Use ${bold(uniqueName)} instead`, value: 1 },
-					{ name: ' 2. Choose another bucket name', value: 2 }
-				]
-				return promptList({ message: 'Choose one of the following options:', choices, separator: false, noAbort: true }).then(answer => {
-					if (answer == 1)
-						return uniqueName
-					else 
-						return _chooseBucketName()
-				})
-			} else
-				return answer
-		})
-	})
-
 /**
  * [description]
  * @param  {[type]} 	projectId 		[description]
@@ -730,11 +700,6 @@ const _listBuckets = (projectId, token, waitDone, options={}) => Promise.resolve
 		return normalBuckets
 	})
 })
-
-const _findUniqueBucketName = (name='') => {
-	const newName = `${name}-${identity.new({ short: true })}`.toLowerCase()
-	return gcp.bucket.exists(newName).then(yes => yes ? _findUniqueBucketName(name) : newName)
-}
 
 const _manageUsers = (projectId, token, waitDone, options) => Promise.resolve(null).then(() => {
 	waitDone = wait(`Listing Collaborators for project ${bold(projectId)}`)
@@ -949,7 +914,7 @@ const _addRolesToServiceAccount = (projectId, token, waitDone, svcAccounts, opti
 const _addServiceAccount = (projectId, token, waitDone, svcAccounts, options) => Promise.resolve(null).then(() => {
 
 	let serviceAccountName
-	return _enterName('Enter a service account name: ', 'The service account name is required.')
+	return coreHelper.enterName('Enter a service account name: ', 'The service account name is required.')
 		.then(name => {
 			serviceAccountName = name 
 			return askQuestion(question('Do you wish to add one or multiple roles to this service account (Y/n) ? ')).then(yes => {
@@ -1150,21 +1115,6 @@ const _configureCronSchedule = () => Promise.resolve(null)
 			return null
 		}
 	})
-
-const _enterName = (q, r, options={}) => askQuestion(question(q)).then(answer => {
-	const rx = options.rule || /^[a-zA-Z0-9\-_]+$/
-	if (!answer && options.default)
-		return options.default
-	else if (!answer) {
-		console.log(error(r))
-		return _enterName(q, r, options)
-	} else if (answer.match(rx))
-		return answer.toLowerCase()
-	else {
-		console.log(error('Invalid name. A valid name can only contain alphanumerical characters, - and _. Spaces are not allowed.'))
-		return _enterName(q, r, options)
-	}
-})
 
 const _chooseEmail = (q, r, options={}) => askQuestion(question(q)).then(answer => {
 	if (!answer && options.default)
