@@ -13,7 +13,7 @@ const clipboardy = require('clipboardy')
 const gcp = require('../gcp')
 const { error, wait, success, link, bold, info, note, warn, askQuestion, question, debugInfo, cmd, promptList } = require('../../../utils/console')
 const { zipToBuffer, getAppJsonFiles, exists: fileExists } = require('../../../utils/files')
-const { promise, date, obj, collection }  = require('../../../utils')
+const { promise, date, obj, collection, validate }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
 const getToken = require('../getToken')
@@ -456,7 +456,8 @@ const _deployWebsite = ({ projectId, bucketId, locationId, projectPath }) => co(
 		return { file:f, dst }
 	})
 	yield bucketHelper.upload({ projectId, bucketId, files:filesWithDestination, token, silent:false })
-	const websiteUrl = `https://storage.googleapis.com/${bucketId}`
+	const customDomain = `http://${bucketId}`
+	const websiteUrl = validate.url(customDomain) ? customDomain : `https://storage.googleapis.com/${bucketId}`
 	yield clipboardy.write(websiteUrl)
 	console.log(success(`Website successfully deployed and available at ${bold(link(websiteUrl))} (copied to clipboard)`))
 })
