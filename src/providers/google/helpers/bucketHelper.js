@@ -152,17 +152,17 @@ const updateWebsiteConfig = ({ projectId, bucketId, token, websiteConfig, silent
 	let waitDone = () => null
 	const storage = client.new({ projectId })
 	const bucket = storage.bucket(bucketId)
-	if (!silent) waitDone = wait(`Checking bucket config...`)
+	if (!silent) waitDone = wait('Checking bucket config...')
 	const { website={} } = (yield bucket.get({ token })) || {}
 	waitDone()
 	if (websiteConfig.mainPageSuffix != website.mainPageSuffix || websiteConfig.notFoundPage != website.notFoundPage) {
 		if (!silent) { 
-			console.log(info(`Bucket's configuration has changed.`))
-			waitDone = wait(`Updating bucket config now...`)
+			console.log(info('Bucket\'s configuration has changed.'))
+			waitDone = wait('Updating bucket config now...')
 		}
 		yield bucket.website.setup(websiteConfig, { token })
 		waitDone()
-		if (!silent) console.log(success(`Bucket's configuration successfully updated.`))
+		if (!silent) console.log(success('Bucket\'s configuration successfully updated.'))
 	}
 })
 

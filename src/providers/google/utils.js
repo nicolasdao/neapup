@@ -199,16 +199,6 @@ const _chooseHandlerFile = (handlers, files=[]) => Promise.resolve(null).then(()
  */
 const _updateHostingConfig = (hostingConfig, projectId, handlers, options={}) => co(function *() {
 	hostingConfig = hostingConfig || {}
-	const missingAppConfig = !hostingConfig.service && !hostingConfig.type
-	if (missingAppConfig) {
-		const choices = [
-			{ name: ' 1. App', value: 'app' },
-			{ name: ' 2. Static Website', value: 'static-website' }
-		]
-		const projectType = yield promptList({ message: 'What are you trying to deploy?', choices, separator: false, noAbort:true })
-		hostingConfig.type = projectType
-	}
-
 	const isApp = hostingConfig.type != 'static-website'
 	
 	if (options.debug)
@@ -246,7 +236,20 @@ const _updateHostingConfig = (hostingConfig, projectId, handlers, options={}) =>
 const _initializeAppJson = (projectId, hostingConfig={}, options={}) => co(function *() {
 	if (options.projectPath) {
 		const allFiles = yield file.getFiles(options.projectPath, options)
-		const handlers = getHandlers(hostingConfig, allFiles)
+
+		// 1. Choose a project type
+		const missingAppConfig = !hostingConfig.service && !hostingConfig.type
+		if (missingAppConfig) {
+			const choices = [
+				{ name: ' 1. App', value: 'app' },
+				{ name: ' 2. Static Website', value: 'static-website' }
+			]
+			const projectType = yield promptList({ message: 'What are you trying to deploy?', choices, separator: false, noAbort:true })
+			hostingConfig.type = projectType
+		}
+
+		// 2. Create/update the app.<env>.json
+		const handlers = hostingConfig.type == 'static-website' ? {} : getHandlers(hostingConfig, allFiles)
 		return yield _updateHostingConfig(hostingConfig, projectId, handlers, options)
 			.catch(e => {
 				if (e.code == 404) { // Files not found. Handler scripts are referencing missing files.
