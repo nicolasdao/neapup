@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.23.0"></a>
+# [0.23.0](https://gitlab.com/neap/neap-manager/compare/v0.22.39...v0.23.0) (2019-04-03)
+
+
+### Features
+
+* Add support for deploying static websites: phase II ([a8380cc](https://gitlab.com/neap/neap-manager/commit/a8380cc))
+* Add support for website deployment - phase I ([ca1909a](https://gitlab.com/neap/neap-manager/commit/ca1909a))
+
+
+
 <a name="0.22.39"></a>
 ## [0.22.39](https://gitlab.com/neap/neap-manager/compare/v0.22.38...v0.22.39) (2019-01-14)
 
