@@ -19,21 +19,23 @@ const enterName = (q, r, options={}) => askQuestion(question(q)).then(answer => 
 	}
 })
 
+const BLACK_LISTED_DEPLOY_FILES = ['.gitignore','.neapignore','.npmignore']
 const _filterDeployFilesOnly = (projectPath, files) => co(function *(){
 	files = files || []
-	const neapIgnoreContent = yield file.read(join(projectPath || '', '.neapignore')).catch(() => null)
-	if (neapIgnoreContent) {	
-		const ignoreList = neapIgnoreContent.split('\n').map(x => x.trim())
-		const igFilter = ignore().add(ignoreList).createFilter()
-		const cleanedProjectPath = projectPath 
-			? process.platform == 'win32' 
-				? /\\\\$/.test(projectPath) ? projectPath : `${projectPath}\\` 
-				: /\/$/.test(projectPath) ? projectPath : `${projectPath}/`
-			: ''
-		const filteredFiles = files.filter(f => f && igFilter(f.replace(cleanedProjectPath, ''))) 
-		return filteredFiles
-	} else
-		return files
+	const neapIgnoreContent = (yield file.read(join(projectPath || '', '.neapignore')).catch(() => null))
+	const ignoreList = neapIgnoreContent ? neapIgnoreContent.split('\n').map(x => x.trim()) : BLACK_LISTED_DEPLOY_FILES
+	BLACK_LISTED_DEPLOY_FILES.forEach(i => {
+		if (!ignoreList.some(x => x == i))
+			ignoreList.push(i)
+	})
+	const igFilter = ignore().add(ignoreList).createFilter()
+	const cleanedProjectPath = projectPath 
+		? process.platform == 'win32' 
+			? /\\\\$/.test(projectPath) ? projectPath : `${projectPath}\\` 
+			: /\/$/.test(projectPath) ? projectPath : `${projectPath}/`
+		: ''
+	const filteredFiles = files.filter(f => f && igFilter(f.replace(cleanedProjectPath, ''))) 
+	return filteredFiles
 })
 
 /**
