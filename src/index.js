@@ -17,7 +17,8 @@ const {
 	manage,
 	domain,
 	remove,
-	add
+	add,
+	serve
 } = require('./providers/google/command')
 
 const deploy = (provider='google', options={}) => Promise.resolve(null).then(() => {
@@ -54,5 +55,6 @@ module.exports = {
 	manage,
 	domain,
 	remove,
-	add
+	add,
+	serve
 }

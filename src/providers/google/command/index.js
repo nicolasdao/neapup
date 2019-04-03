@@ -11,6 +11,7 @@
 const utils = require('../utils')
 const { list } = require('./list')
 const { add } = require('./add')
+const serve = require('./serve')
 
 module.exports = {
 	service: {
@@ -23,7 +24,8 @@ module.exports = {
 	manage: require('./manage'),
 	domain: require('./domain'),
 	remove: require('./remove'),
-	add
+	add,
+	serve
 }
 
 

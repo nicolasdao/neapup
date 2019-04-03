@@ -13,7 +13,7 @@
 'use strict'
 
 const program = require('commander')
-const { deploy, list, configure, clean, manage, remove, add } = require('./src')
+const { deploy, list, configure, clean, manage, remove, add, serve } = require('./src')
 const { bold, cyan } = require('./src/utils/console')
 
 program
@@ -44,6 +44,16 @@ program
 			chooseAppJson: options.env === true
 		}
 		return deploy(provider, opts).then(() => process.exit())
+	})
+
+program
+	.command('serve [opt1] [opt2]')
+	.usage('. This command serves a static website')
+	.action((opt1, opt2) => { 
+		const options = [opt1, opt2].filter(x => x)
+		const port = options.find(o => /^[0-9][0-9]*[0-9]$/.test(o))
+		const projectPath = options.find(o => !/^[0-9][0-9]*[0-9]$/.test(o))
+		return serve(projectPath, port)
 	})
 
 program
@@ -137,6 +147,7 @@ if (emptyCommand || helpCommand) {
 	console.log('')
 	console.log('Here is a list of commands that will make your day awesome:\n')
 	console.log(`${cyan('neap up')}      - Run this command in your project, answer a few questions and that's it! You're in the cloud :)`)
+	console.log(`${cyan('neap serve')}   - Run this command to serve locally a static website`)
 	console.log(`${cyan('neap ls')}      - List stuffs from your account`)
 	console.log(`${cyan('neap cf')}      - Configure new or existing app.json files in you current project`)
 	console.log(`${cyan('neap start')}   - Start a service`)

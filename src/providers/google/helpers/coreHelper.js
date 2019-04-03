@@ -55,7 +55,19 @@ const getFiles = (projectPath, options) => co(function *(){
 		return files
 })
 
+const getAbsolutePath = somePath => {
+	if (!somePath)
+		return process.cwd()
+	else if (somePath.match(/^\./)) 
+		return join(process.cwd(), somePath)
+	else if (somePath.match(/^(\\|\/|~)/)) 
+		return somePath
+	else 
+		throw new Error(`Invalid path ${somePath}`)
+}
+
 module.exports = {
 	enterName,
-	getFiles
+	getFiles,
+	getAbsolutePath
 }
