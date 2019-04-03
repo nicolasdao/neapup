@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.24.0"></a>
+# [0.24.0](https://gitlab.com/neap/neap-manager/compare/v0.23.2...v0.24.0) (2019-04-03)
+
+
+### Features
+
+* Add support for serving locally a static website ([7a1f7aa](https://gitlab.com/neap/neap-manager/commit/7a1f7aa))
+
+
+
 <a name="0.23.2"></a>
 ## [0.23.2](https://gitlab.com/neap/neap-manager/compare/v0.23.1...v0.23.2) (2019-04-03)
 
