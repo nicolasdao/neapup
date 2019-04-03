@@ -8,6 +8,7 @@
  */
 
 const { bold, gray, cyan, red, underline, green } = require('chalk')
+const cliProgress = require('cli-progress')
 const ora2 = require('ora')
 const readline = require('readline')
 const inquirer = require('inquirer')
@@ -313,6 +314,22 @@ const displayList = (items, options={}) => {
 	})
 }
 
+const ProgressBar = function(size) {
+	const bar = new cliProgress.Bar({ format: gray('[{bar}] {value}/{total} | {percentage}% | ETA: {eta}s'), clearOnComplete:true })
+	bar.start(size, 0)
+	let counter = 0
+	this.increment = i => {
+		i = i && i > 0 ? i : 1
+		counter += i
+		bar.update(counter < size ? counter : size) 
+	}
+	this.stop = () => {
+		bar.stop()
+	}
+
+	return this
+}
+
 module.exports = {
 	aborted,
 	askQuestion,
@@ -334,5 +351,6 @@ module.exports = {
 	warn,
 	displayTable,
 	searchAnswer,
-	displayList
+	displayList,
+	ProgressBar
 }

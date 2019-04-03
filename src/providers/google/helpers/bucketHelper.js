@@ -2,7 +2,7 @@ const co = require('co')
 const { throttle } = require('core-async')
 const { client } = require('google-cloud-bucket')
 const gcp = require('../gcp')
-const { bold, wait, error, promptList, warn, success, info } = require('../../../utils/console')
+const { bold, wait, error, promptList, warn, success, info, ProgressBar } = require('../../../utils/console')
 const { identity } = require('../../../utils')
 const { enterName } = require('./coreHelper')
 
@@ -81,12 +81,14 @@ const createOrUpdate = ({ projectId, bucketId, locationId, isPublic, token, sile
 		if (!silent) console.log(warn(`Bucket ${bold(bucketId)} does not exist yet!`))
 		if (!silent) waitDone = wait(`Creating ${isPublic ? 'public ' : '' }bucket now...`)
 		yield bucket.create({ location:locationId, token })
-		waitDone()
 		if (isPublic) {
 			yield bucket.addPublicAccess({ token })
+			waitDone()
 			if (!silent) console.log(success(`Public bucket ${bold(bucketId)} successfully created!`))
-		} else if (!silent) 
+		} else if (!silent) {
+			waitDone()
 			console.log(success(`Bucket ${bold(bucketId)} successfully created!`))
+		}
 	}
 })
 
@@ -133,16 +135,19 @@ const deleteFiles = ({ projectId, bucketId, files, token, silent }) => co(functi
 const upload = ({ projectId, bucketId, files, token, silent }) => co(function *(){
 	files = files || []
 	silent = silent === undefined ? true : silent
-	let waitDone = () => null
 	const storage = client.new({ projectId })
 	const bucket = storage.bucket(bucketId)
 	const l = files.length 
 	if (l > 0) {
-		if (!silent) waitDone = wait(`Uploading ${l} file${l > 1 ? 's' : ''} to bucket '${bucketId}' now...`)
-		const uploadTasks = files.map(({ file, dst }) => (() => bucket.object(dst).insertFile(file, { token })))
-		yield throttle(uploadTasks,20)
-		waitDone()
-		if (!silent) console.log(success(`${l} file${l > 1 ? 's' : ''} successfully uploaded`))
+		const bar = silent ? { update:() => null, stop:() => null } : (new ProgressBar(l))
+		const uploadTasks = files.map(({ file, dst }) => (() => bucket.object(dst).insertFile(file, { token }).then(v => {
+			bar.increment()
+			return v
+		})))
+		yield throttle(uploadTasks,30)
+		bar.stop()
+		if (!silent) 
+			console.log(success(`${l} file${l > 1 ? 's' : ''} successfully uploaded`))
 	}
 })
 
