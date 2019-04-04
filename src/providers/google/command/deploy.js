@@ -447,7 +447,7 @@ const _deployWebsite = ({ projectId, bucketId, locationId, projectPath }) => co(
 
 	// 3. Delete certain files
 	if (filesToDelete.length > 0) 
-		yield bucketHelper.delete({ projectId, bucketId, files:filesToDelete.map(x => x.pathname), token, silent:false })
+		yield bucketHelper.deleteFiles({ projectId, bucketId, files:filesToDelete.map(x => x.pathname), token, silent:false })
 	
 	// 4. Upload certain files
 	const filesWithDestination = newFiles.map(f => {

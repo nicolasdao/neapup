@@ -16,6 +16,7 @@ const { obj: { merge }, file, collection } = require('../../../utils')
 const projectHelper = require('../project')
 const { chooseAProject } = require('./list')
 const getToken = require('../getToken')
+const { bucketHelper } = require('../helpers')
 
 const removeStuffs = (options={}) => utils.project.confirm(merge(options, { selectProject: options.selectProject === undefined ? true : options.selectProject, skipAppEngineCheck: true }))
 	.then(({ token }) => {
@@ -237,13 +238,15 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 									}
 									console.log(' ')
 
-									const choices = buckets.filter(({ id }) => !id.match(/^(neapup-v|now-deployments-|webfunc-deployment-)/)).map(({ id },idx) => ({ name: ` ${idx+1}. ${id}`, value: id }))
+									// const choices = buckets.filter(({ id }) => !id.match(/^(neapup-v|now-deployments-|webfunc-deployment-)/)).map(({ id },idx) => ({ name: ` ${idx+1}. ${id}`, value: id }))
+									const choices = buckets.filter(({ id }) => !id.match(/^(neapup-v|now-deployments-|webfunc-deployment-)/)).map(({ id }) => id)
 									if (!choices.some(x => x)) {
 										console.log(info('No buckets can be deleted. The only existing buckets are restricted system buckets that are necessary to operate your account. They cannot be deleted.'))
 										return
 									}
 
-									return promptList({ message: 'Choose which bucket you want to delete:', choices, separator: false }).then(answer => {
+									return searchAnswer('Select a bucket ID: ', choices, (input='', rs) => rs.filter(r => r && r.toLowerCase().indexOf(input.toLowerCase().trim()) >= 0)).then(answer => {
+									//return promptList({ message: 'Choose which bucket you want to delete:', choices, separator: false }).then(answer => {
 										if (!answer)
 											return
 										return askQuestion(question(`Are you sure you want to delete bucket ${bold(answer)} in project ${bold(projectId)} (Y/n) ? `)).then(yes => {
@@ -251,7 +254,7 @@ const removeStuffs = (options={}) => utils.project.confirm(merge(options, { sele
 												return
 
 											waitDone = wait('Deleting bucket')
-											return gcp.bucket.delete(answer, token, options).then(() => {
+											return bucketHelper.delete({ projectId, bucketId:answer, token }).then(() => {// gcp.bucket.delete(answer, token, options).then(() => {
 												waitDone()
 												console.log(success(`Bucket ${bold(answer)} successfully deleted from project ${bold(projectId)}`))
 											})

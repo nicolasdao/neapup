@@ -83,6 +83,7 @@ const createOrUpdate = ({ projectId, bucketId, locationId, isPublic, token, sile
 		yield bucket.create({ location:locationId, token })
 		if (isPublic) {
 			yield bucket.addPublicAccess({ token })
+			yield bucket.website.setup({ mainPageSuffix: 'index.html', notFoundPage:'404.html' }, { token })
 			waitDone()
 			if (!silent) console.log(success(`Public bucket ${bold(bucketId)} successfully created!`))
 		} else if (!silent) {
@@ -100,7 +101,10 @@ const listFiles = ({ projectId, bucketId, token }) => co(function *(){
 })
 
 /**
+ * Delete bucket's files
  * 
+ * @param {String}   projectId 	
+ * @param {String}   bucketId 	
  * @param {[String]} files 		File paths on Google Cloud Bucket. They are relative to the bucket.
  * @param {String}   token 	
  * @param {Boolean}  silent 	Default true. Determines whether console messages should be output or not.
@@ -120,6 +124,26 @@ const deleteFiles = ({ projectId, bucketId, files, token, silent }) => co(functi
 		waitDone()
 		if (!silent) console.log(success(`${l} file${l > 1 ? 's' : ''} successfully deleted`))
 	}
+})
+
+/**
+ * Delete bucket
+ * 
+ * @param {String}   projectId 	
+ * @param {String}   bucketId 	
+ * @param {String}   token 	
+ * @param {Boolean}  silent 	Default true. Determines whether console messages should be output or not.
+ * @yield {Void}
+ */
+const deleteBucket = ({ projectId, bucketId, token, silent }) => co(function *(){
+	silent = silent === undefined ? true : silent
+	let waitDone = () => null
+	const storage = client.new({ projectId })
+	const bucket = storage.bucket(bucketId)
+	if (!silent) waitDone = wait(`Deleting bucket '${bucketId}' now...`)
+	yield bucket.delete({ token, force:true })
+	waitDone()
+	if (!silent) console.log(success(`Bucket successfully deleted`))
 })
 
 /**
@@ -177,7 +201,8 @@ module.exports = {
 	findUniqueName,
 	createOrUpdate,
 	listFiles,
-	delete: deleteFiles,
+	deleteFiles,
+	delete: deleteBucket,
 	upload,
 	updateWebsiteConfig
 }

@@ -159,7 +159,7 @@ const promptList = ({
 }
 
 /**
- * [description]
+ * e.g. searchAnswer('Select a roles: ', roles, (input='', rs) => rs.filter(r => r.indexOf(input) >= 0))
  * @param  {String} message  		Question
  * @param  {[String]} choices  		String array containing all the choices
  * @param  {Function} filterFn 		(input, choicesLeft) => ... where 'input' is the string input from the user and 

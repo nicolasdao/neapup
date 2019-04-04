@@ -355,14 +355,15 @@ const _helpConfiguringAppJson = (projectId, token, options={}) => co(function *(
 		let websiteSettings
 		if (!allSettingsAlreadySet) { 
 			const projectDetails = yield _promptUserToConfirmProjectAndChooseBucket(projectId)
-			yield appHosting.update({ bucketId:projectDetails.bucketId }, options.projectPath, options)
-			websiteSettings = obj.merge(projectDetails, { type:hostingConfig.type })
+			const website = { mainPageSuffix: 'index.html', notFoundPage:'404.html' }
+			yield appHosting.update({ bucketId:projectDetails.bucketId, website }, options.projectPath, options)
+			websiteSettings = obj.merge(projectDetails, { type:hostingConfig.type, website })
 		} else {
 			const token = yield getToken()
-			websiteSettings = { projectId, bucketId: hostingConfig.bucketId, locationId: hostingConfig.locationId, token, type: hostingConfig.type }
+			websiteSettings = { projectId, bucketId: hostingConfig.bucketId, locationId: hostingConfig.locationId, token, type: hostingConfig.type, website:hostingConfig.website }
 		}
 
-		yield bucketHelper.updateWebsiteConfig({ projectId, bucketId:websiteSettings.bucketId, token, websiteConfig: hostingConfig.website, silent:false })
+		yield bucketHelper.updateWebsiteConfig({ projectId, bucketId:websiteSettings.bucketId, token, websiteConfig: websiteSettings.website, silent:false })
 
 		return websiteSettings
 	} else {
