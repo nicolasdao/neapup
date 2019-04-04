@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.24.3"></a>
+## [0.24.3](https://gitlab.com/neap/neap-manager/compare/v0.24.2...v0.24.3) (2019-04-04)
+
+
+### Bug Fixes
+
+* Deleting a non-empty bucket fails ([b572c1d](https://gitlab.com/neap/neap-manager/commit/b572c1d))
+
+
+
 <a name="0.24.2"></a>
 ## [0.24.2](https://gitlab.com/neap/neap-manager/compare/v0.24.1...v0.24.2) (2019-04-03)
 
