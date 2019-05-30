@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.24.4"></a>
+## [0.24.4](https://gitlab.com/neap/neap-manager/compare/v0.24.3...v0.24.4) (2019-05-30)
+
+
+### Bug Fixes
+
+* Code exit without any reason ([4da503f](https://gitlab.com/neap/neap-manager/commit/4da503f))
+
+
+
 <a name="0.24.3"></a>
 ## [0.24.3](https://gitlab.com/neap/neap-manager/compare/v0.24.2...v0.24.3) (2019-04-04)
 
