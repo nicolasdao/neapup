@@ -65,11 +65,10 @@ const deploy = (options={}) => co(function *() {
 						name: ` ${idx+1}. ${x.name} [${x.commandOption}]`,
 						value: x.value
 					}))
-					return promptList({ message: 'Which config should be deployed?', choices: formattedChoices, separator: false }).then(answer => {
-						if (!answer)
-							process.exit()
-						options.env = answer == 'app.json' ? null : answer.match(/app\.(.*?)\.json/)[1]
-					})
+					const configAnswer = yield promptList({ message: 'Which config should be deployed?', choices: formattedChoices, separator: false })
+					if (!configAnswer)
+						process.exit()
+					options.env = configAnswer == 'app.json' ? null : configAnswer.match(/app\.(.*?)\.json/)[1]
 				}
 			}
 		}

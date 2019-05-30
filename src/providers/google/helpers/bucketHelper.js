@@ -143,7 +143,7 @@ const deleteBucket = ({ projectId, bucketId, token, silent }) => co(function *()
 	if (!silent) waitDone = wait(`Deleting bucket '${bucketId}' now...`)
 	yield bucket.delete({ token, force:true })
 	waitDone()
-	if (!silent) console.log(success(`Bucket successfully deleted`))
+	if (!silent) console.log(success('Bucket successfully deleted'))
 })
 
 /**
