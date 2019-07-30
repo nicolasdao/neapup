@@ -17,7 +17,7 @@
 // 	- Google Site Verification: 	https://developers.google.com/site-verification/v1/getting_started
 
 const opn = require('opn')
-const { encode: encodeQuery, stringify: formUrlEncode } = require('querystring')
+const { encode: encodeQuery } = require('querystring')
 const fetch = require('../../utils/fetch')
 const { info, highlight, cmd, link, debugInfo, bold, error } = require('../../utils/console')
 const { promise, identity, collection, obj: objectHelper, yaml, validate } = require('../../utils/index')
@@ -25,8 +25,10 @@ const { promise, identity, collection, obj: objectHelper, yaml, validate } = req
 const IAM_SERVICE_API = 'iam.googleapis.com'
 
 // OAUTH
-const OAUTH_TOKEN_URL = () => 'https://www.googleapis.com/oauth2/v4/token'
 const GCP_CONSENT_PAGE = query => `https://accounts.google.com/o/oauth2/v2/auth?${query}`
+const NEAPUP_AUTH_URL = 'https://neapup.appspot.com'
+const NEAPUP_TOKEN_URL = () => `${NEAPUP_AUTH_URL}/auth/token/new`
+const NEAPUP_REFRESH_TOKEN_URL = () => `${NEAPUP_AUTH_URL}/auth/token/refresh`
 // RESOURCE MANAGER
 const PROJECT_URL = (projectId) => `https://cloudresourcemanager.googleapis.com/v1/projects${projectId ? `/${projectId}` : ''}`
 const PROJECT_OPS_URL = operationId => `https://cloudresourcemanager.googleapis.com/v1/operations/${operationId}`
@@ -251,38 +253,24 @@ const removeOwnerFromResource = ({ resourceId, owner }, token) => listAllVerifie
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const getOAuthToken = ({ code, client_id, client_secret, redirect_uri }, options={ debug:false }) => Promise.resolve(null).then(() => {
+const getOAuthToken = ({ code, client_id, redirect_uri }, options={ debug:false }) => Promise.resolve(null).then(() => {
 	_showDebug('Requesting new OAuth token from Google Cloud Platform.', options)
-	_validateRequiredParams({ code, client_id, client_secret, redirect_uri })
-	const body = formUrlEncode({
-		code,
-		client_id,
-		client_secret,
-		redirect_uri,
-		grant_type: 'authorization_code'
-	})
+	_validateRequiredParams({ code, client_id, redirect_uri })
 	
-	return fetch.post(OAUTH_TOKEN_URL(), {
-		'content-type': 'application/x-www-form-urlencoded',
-		'content-length': body.length
-	}, body)
+	console.log(NEAPUP_TOKEN_URL())
+	return fetch.post(NEAPUP_TOKEN_URL(), {
+		'content-type': 'application/json',
+	}, JSON.stringify({ code, client_id, redirect_uri }))
 })
 
-const refreshOAuthToken = ({ refresh_token, client_id, client_secret }, options={ debug:false }) => {
+const refreshOAuthToken = ({ refresh_token, client_id }, options={ debug:false }) => {
 	_showDebug('Requesting a refresh of existing OAuth token from Google Cloud Platform.', options)
-	_validateRequiredParams({ refresh_token, client_id, client_secret })
-	
-	const body = formUrlEncode({
-		refresh_token,
-		client_id,
-		client_secret,
-		grant_type: 'refresh_token',
-	})
+	_validateRequiredParams({ refresh_token, client_id })
 
-	return fetch.post(OAUTH_TOKEN_URL(), {
-		'content-type': 'application/x-www-form-urlencoded',
-		'content-length': body.length
-	}, body)
+	console.log(NEAPUP_REFRESH_TOKEN_URL())
+	return fetch.post(NEAPUP_REFRESH_TOKEN_URL(), {
+		'content-type': 'application/json',
+	}, JSON.stringify({ refresh_token, client_id }))
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

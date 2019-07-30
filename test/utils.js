@@ -7,10 +7,6 @@
  * permission of neap pty ltd nic@neap.co.
  */
 
-
-/* global describe */
-/* global it */
-
 const { assert } = require('chai')
 const { join } = require('path')
 const { obj, file, yaml, functional, promise, collection } = require('../src/utils')

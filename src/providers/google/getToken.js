@@ -20,8 +20,7 @@ const gcp = require('./gcp')
 // - Cloud Build API
 // - App Engine Admin API 
 
-const CLIENT_ID = '197157573268-pj0kkr7ekfj0fmoq3ji57aej50oui4ns.apps.googleusercontent.com' //'429438303487-0gh70ga2469aqrfhf134ei4ph8p24bia.apps.googleusercontent.com'
-const CLIENT_SECRET = 'Lb0ynC3U1JDxTS_ds4TzKrDF' //'2Uz-BIRBYlCaFTL4qvkTzJmo'
+const CLIENT_ID = '197157573268-h14m5tvl9b9dqtq23460tic5s5skvgap.apps.googleusercontent.com'
 const SCOPES = [
 	'https://www.googleapis.com/auth/cloud-platform',
 	'https://www.googleapis.com/auth/appengine.admin',
@@ -82,7 +81,6 @@ const retrieveAndStore_GCP_Credentials = (req, res) => Promise.resolve(null).the
 		return gcp.oAuthToken.get({
 			code,
 			client_id: CLIENT_ID,
-			client_secret: CLIENT_SECRET,
 			redirect_uri: `http://${req.headers.host}`
 		}, server.options).then(({ status, data }) => {
 			if (status !== 200) {
@@ -183,8 +181,7 @@ const getUpToDateCreds = (creds, options={ debug:false }) => {
 
 	return gcp.oAuthToken.refresh({
 		refresh_token: creds.refreshToken,
-		client_id: CLIENT_ID,
-		client_secret: CLIENT_SECRET
+		client_id: CLIENT_ID
 	}, options).then(({ status, data }) => {
 		if (status !== 200) {
 			console.log(error(`Got unexpected status code from Google: ${status}`))

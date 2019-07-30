@@ -979,172 +979,172 @@ const _chooseScalingType = (answers={}, options={}) => Promise.resolve(null).the
 	})
 })
 
-const _configureAutoScalingCoolDownPeriod = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('How long should the autoscaler wait (unit: second) before changing the number of instances (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingCoolDownPeriod(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { coolDownPeriod: `${answer}s` })
+// const _configureAutoScalingCoolDownPeriod = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('How long should the autoscaler wait (unit: second) before changing the number of instances (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingCoolDownPeriod(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { coolDownPeriod: `${answer}s` })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMaxConcurrentRequests = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('How many concurrent requests can be accepted before the scheduler spawns a new instance (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMaxConcurrentRequests(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxConcurrentRequests: answer*1 })
+// const _configureAutoScalingMaxConcurrentRequests = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('How many concurrent requests can be accepted before the scheduler spawns a new instance (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMaxConcurrentRequests(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxConcurrentRequests: answer*1 })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMinIdleInstances = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the minimum number of idle instances that should be maintained (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMinIdleInstances(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { minIdleInstances: answer*1 })
+// const _configureAutoScalingMinIdleInstances = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the minimum number of idle instances that should be maintained (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMinIdleInstances(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { minIdleInstances: answer*1 })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMaxIdleInstances = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the maximum number of idle instances that should be maintained (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMaxIdleInstances(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxIdleInstances: answer*1 })
+// const _configureAutoScalingMaxIdleInstances = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the maximum number of idle instances that should be maintained (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMaxIdleInstances(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxIdleInstances: answer*1 })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMinTotalInstances = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the minimum number of running instances that should be maintained (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMinTotalInstances(answers)
-		} else if (answer) {
-			const c = !answers.env || answers.env == 'standard' 
-				? { standardSchedulerSettings: { minInstances: answer*1 } }
-				: { minTotalInstances: answer*1 }
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, c)
-		}
+// const _configureAutoScalingMinTotalInstances = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the minimum number of running instances that should be maintained (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMinTotalInstances(answers)
+// 		} else if (answer) {
+// 			const c = !answers.env || answers.env == 'standard' 
+// 				? { standardSchedulerSettings: { minInstances: answer*1 } }
+// 				: { minTotalInstances: answer*1 }
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, c)
+// 		}
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMaxTotalInstances = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the maximum number of instances that could be started (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMaxTotalInstances(answers)
-		} else if (answer) {
-			const c = !answers.env || answers.env == 'standard' 
-				? { standardSchedulerSettings: { maxInstances: answer*1 } }
-				: { maxTotalInstances: answer*1 }
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
-		}
+// const _configureAutoScalingMaxTotalInstances = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the maximum number of instances that could be started (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMaxTotalInstances(answers)
+// 		} else if (answer) {
+// 			const c = !answers.env || answers.env == 'standard' 
+// 				? { standardSchedulerSettings: { maxInstances: answer*1 } }
+// 				: { maxTotalInstances: answer*1 }
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
+// 		}
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingTargetCpuUtilization = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('Enter a number between 0 and 100 that represents the percentate of CPU utilization that should trigger the creation of a new instance (default: 60) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingTargetCpuUtilization(answers)
-		} else if (answer) {
-			let nbr = answer*1
-			nbr = (nbr > 95 ? 95 : nbr < 5 ? 5 : nbr) / 100
-			const c = !answers.env || answers.env == 'standard' 
-				? { standardSchedulerSettings: { targetCpuUtilization: nbr } }
-				: { cpuUtilization: { targetUtilization: nbr } }
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
-		}
+// const _configureAutoScalingTargetCpuUtilization = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('Enter a number between 0 and 100 that represents the percentate of CPU utilization that should trigger the creation of a new instance (default: 60) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingTargetCpuUtilization(answers)
+// 		} else if (answer) {
+// 			let nbr = answer*1
+// 			nbr = (nbr > 95 ? 95 : nbr < 5 ? 5 : nbr) / 100
+// 			const c = !answers.env || answers.env == 'standard' 
+// 				? { standardSchedulerSettings: { targetCpuUtilization: nbr } }
+// 				: { cpuUtilization: { targetUtilization: nbr } }
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
+// 		}
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingTargetThroughputUtilization = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('Enter a number between 0 and 100 that represents the percentate of the maximum concurrent requests that should trigger the creation of a new instance (default: 60) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingTargetThroughputUtilization(answers)
-		} else if (answer) {
-			let nbr = answer*1
-			nbr = (nbr > 95 ? 95 : nbr < 5 ? 5 : nbr) / 100
-			const maxFlexInstances = answers.maxTotalInstances || 20
-			let targetConcurrentRequests = Math.round(nbr * maxFlexInstances)
-			targetConcurrentRequests = targetConcurrentRequests < 1 ? 1 : targetConcurrentRequests
-			const c = !answers.env || answers.env == 'standard' 
-				? { standardSchedulerSettings: { targetThroughputUtilization: nbr } }
-				: { requestUtilization: { targetConcurrentRequests } }
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
-		}
+// const _configureAutoScalingTargetThroughputUtilization = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('Enter a number between 0 and 100 that represents the percentate of the maximum concurrent requests that should trigger the creation of a new instance (default: 60) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingTargetThroughputUtilization(answers)
+// 		} else if (answer) {
+// 			let nbr = answer*1
+// 			nbr = (nbr > 95 ? 95 : nbr < 5 ? 5 : nbr) / 100
+// 			const maxFlexInstances = answers.maxTotalInstances || 20
+// 			let targetConcurrentRequests = Math.round(nbr * maxFlexInstances)
+// 			targetConcurrentRequests = targetConcurrentRequests < 1 ? 1 : targetConcurrentRequests
+// 			const c = !answers.env || answers.env == 'standard' 
+// 				? { standardSchedulerSettings: { targetThroughputUtilization: nbr } }
+// 				: { requestUtilization: { targetConcurrentRequests } }
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {},  c )
+// 		}
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMinPendingLatency = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the minimum amount of time a request should wait in the pending queue before starting a new instance to handle it (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMinPendingLatency(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { minPendingLatency: `${answer}s` })
+// const _configureAutoScalingMinPendingLatency = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the minimum amount of time a request should wait in the pending queue before starting a new instance to handle it (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMinPendingLatency(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { minPendingLatency: `${answer}s` })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureAutoScalingMaxPendingLatency = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the maximum amount of time (unit: second) that a request should wait in the pending queue before starting a new instance to handle it (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureAutoScalingMaxPendingLatency(answers)
-		} else if (answer)
-			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxPendingLatency: `${answer}s` })
+// const _configureAutoScalingMaxPendingLatency = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the maximum amount of time (unit: second) that a request should wait in the pending queue before starting a new instance to handle it (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureAutoScalingMaxPendingLatency(answers)
+// 		} else if (answer)
+// 			answers.automaticScaling = obj.merge(answers.automaticScaling || {}, { maxPendingLatency: `${answer}s` })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureBasicScalingMaxInstances = (answers={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('What\'s the maximum number of instances that can be provisioned (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureBasicScalingMaxInstances(answers)
-		} else if (answer)
-			answers.basicScaling = obj.merge(answers.basicScaling || {}, { maxInstances: answer*1 })
+// const _configureBasicScalingMaxInstances = (answers={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('What\'s the maximum number of instances that can be provisioned (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureBasicScalingMaxInstances(answers)
+// 		} else if (answer)
+// 			answers.basicScaling = obj.merge(answers.basicScaling || {}, { maxInstances: answer*1 })
 
-		return answers
-	})
-})
+// 		return answers
+// 	})
+// })
 
-const _configureBasicScalingIdleTimeOut = (answers={}, options={}) => Promise.resolve(null).then(() => {
-	return askQuestion(question('How much idle time (unit: second) decommission an instance (Enter a number) ? ')).then(answer => {
-		if (answer && typeof(answer*1) != 'number') {
-			console.log(info('You can only specify a number. Try again.'))
-			return _configureBasicScalingIdleTimeOut(answers)
-		} else if (answer)
-			answers.basicScaling = obj.merge(answers.basicScaling || {}, { idleTimeout: `${answer}s` })
+// const _configureBasicScalingIdleTimeOut = (answers={}, options={}) => Promise.resolve(null).then(() => {
+// 	return askQuestion(question('How much idle time (unit: second) decommission an instance (Enter a number) ? ')).then(answer => {
+// 		if (answer && typeof(answer*1) != 'number') {
+// 			console.log(info('You can only specify a number. Try again.'))
+// 			return _configureBasicScalingIdleTimeOut(answers)
+// 		} else if (answer)
+// 			answers.basicScaling = obj.merge(answers.basicScaling || {}, { idleTimeout: `${answer}s` })
 
-		return _updateRoot(answers, obj.merge(options, { message: ALT_QUESTION(options.env) }))
-	})
-})
+// 		return _updateRoot(answers, obj.merge(options, { message: ALT_QUESTION(options.env) }))
+// 	})
+// })
 
 // Doc: 
 // 	- Standard env: https://cloud.google.com/appengine/docs/standard/python/config/appref#scaling_elements

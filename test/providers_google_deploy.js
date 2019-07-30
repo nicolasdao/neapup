@@ -7,10 +7,6 @@
  * permission of neap pty ltd nic@neap.co.
  */
 
-
-/* global describe */
-/* global it */
-
 const { assert } = require('chai')
 const { join } = require('path')
 const gcpDeploy = require('../src/providers/google/deploy')

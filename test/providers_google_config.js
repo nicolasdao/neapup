@@ -7,10 +7,6 @@
  * permission of neap pty ltd nic@neap.co.
  */
 
-
-/* global describe */
-/* global it */
-
 const { join } = require('path')
 const { assert } = require('chai')
 const { _: { mergeAppJsons }, appJson } = require('../src/providers/google/config')
