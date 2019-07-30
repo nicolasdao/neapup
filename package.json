@@ -1,7 +1,7 @@
 {
-  "name": "@neap/manager",
+  "name": "neapup",
   "version": "0.24.4",
-  "description": "Manage Serverless Web Apps hosted on Google Cloud Platform App Engine and Functions as well as AWS Lambdas.",
+  "description": "Deploy serverless apps, microservices on Google App Engine and static website on Google Cloud Bucket with a single command and less config.",
   "main": "index.js",
   "contributors": [
     "Nicolas Dao <nic@neap.co> (https://neap.co/)"
@@ -11,32 +11,33 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://gitlab.com/neap/neap-manager.git"
+    "url": "https://github.com/nicolasdao/neapup.git"
   },
   "keywords": [
     "deploy",
     "serverless",
+    "app-engine",
     "google-cloud",
-    "aws-lambdas",
     "cloud",
-    "functions"
+    "functions",
+    "bigquery",
+    "task",
+    "cron"
   ],
   "bugs": {
-    "url": "https://gitlab.com/neap/neap-manager/issues"
+    "url": "https://github.com/nicolasdao/neapup/issues"
   },
-  "homepage": "https://gitlab.com/neap/neap-manager#readme",
+  "homepage": "https://github.com/nicolasdao/neapup",
   "scripts": {
-    "insta": "git pull origin master && npm install ./ -g",
     "lint": "eslint index.js src/ test/ --fix",
-    "push": "git push --follow-tags origin master",
+    "push": "git push --follow-tags origin master && npm publish",
     "rls": "standard-version --release-as",
-    "setup": "npm run insta",
     "start": "node index.js",
     "test": "mocha",
     "v": "node -e \"console.log(require('./package.json').version)\""
   },
   "author": "Nicolas Dao",
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "BSD-3-Clause",
   "devDependencies": {
     "chai": "^4.1.2",
     "eslint": "^4.19.1",
