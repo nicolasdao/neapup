@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.25.2](https://github.com/nicolasdao/neapup/compare/v0.25.1...v0.25.2) (2019-07-30)
+
+
+### Bug Fixes
+
+* client secret exposed. ([bb7152e](https://github.com/nicolasdao/neapup/commit/bb7152e))
+
+
+
 ### [0.25.1](https://github.com/nicolasdao/neapup/compare/v0.25.0...v0.25.1) (2019-07-30)
 
 
