@@ -1,6 +1,15 @@
-# Change Log
+# Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [0.25.1](https://github.com/nicolasdao/neapup/compare/v0.25.0...v0.25.1) (2019-07-30)
+
+
+### Bug Fixes
+
+* Vulnerability issues raised by github and npm ([5024801](https://github.com/nicolasdao/neapup/commit/5024801))
+
+
 
 <a name="0.25.0"></a>
 # [0.25.0](https://github.com/nicolasdao/neapup/compare/v0.24.4...v0.25.0) (2019-07-30)
