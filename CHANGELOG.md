@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.25.3](https://github.com/nicolasdao/neapup/compare/v0.25.2...v0.25.3) (2019-07-31)
+
+
+### Bug Fixes
+
+* Remove uncessary log ([b6ebc11](https://github.com/nicolasdao/neapup/commit/b6ebc11))
+
+
+
 ### [0.25.2](https://github.com/nicolasdao/neapup/compare/v0.25.1...v0.25.2) (2019-07-30)
 
 
