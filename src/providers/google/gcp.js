@@ -257,7 +257,6 @@ const getOAuthToken = ({ code, client_id, redirect_uri }, options={ debug:false 
 	_showDebug('Requesting new OAuth token from Google Cloud Platform.', options)
 	_validateRequiredParams({ code, client_id, redirect_uri })
 	
-	console.log(NEAPUP_TOKEN_URL())
 	return fetch.post(NEAPUP_TOKEN_URL(), {
 		'content-type': 'application/json',
 	}, JSON.stringify({ code, client_id, redirect_uri }))
@@ -267,7 +266,6 @@ const refreshOAuthToken = ({ refresh_token, client_id }, options={ debug:false }
 	_showDebug('Requesting a refresh of existing OAuth token from Google Cloud Platform.', options)
 	_validateRequiredParams({ refresh_token, client_id })
 
-	console.log(NEAPUP_REFRESH_TOKEN_URL())
 	return fetch.post(NEAPUP_REFRESH_TOKEN_URL(), {
 		'content-type': 'application/json',
 	}, JSON.stringify({ refresh_token, client_id }))
