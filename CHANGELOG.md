@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.25.4](https://github.com/nicolasdao/neapup/compare/v0.25.3...v0.25.4) (2019-08-10)
+
+
+### Bug Fixes
+
+* Fail to zip files under path containing folder's name with dots ([03d94f8](https://github.com/nicolasdao/neapup/commit/03d94f8))
+
+
+
 ### [0.25.3](https://github.com/nicolasdao/neapup/compare/v0.25.2...v0.25.3) (2019-07-31)
 
 

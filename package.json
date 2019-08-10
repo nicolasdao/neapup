@@ -1,6 +1,6 @@
 {
   "name": "neapup",
-  "version": "0.25.3",
+  "version": "0.25.4",
   "description": "Deploy serverless apps, microservices on Google App Engine and static website on Google Cloud Bucket with a single command and less config.",
   "main": "index.js",
   "contributors": [
