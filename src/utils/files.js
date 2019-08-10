@@ -7,6 +7,7 @@
  * permission of neap pty ltd nic@neap.co.
  */
 
+const co = require('co')
 const _fs = require('fs')
 const fs = require('fs-extra')
 const { join, basename, dirname } = require('path')
@@ -86,6 +87,19 @@ const checkStandardEnvFilesQuotas = src => fileExists(join(src, 'node_modules'))
 		})
 })
 
+const _copyFileOrDirToDest = (file_or_dir_abs_path, dst, src) => co(function *(){
+	const new_loc = join(dst, file_or_dir_abs_path.replace(src, ''))
+	const new_loc_exists = yield fs.exists(new_loc).catch(() => false)
+	if (new_loc_exists)
+		return 
+
+	const stat = yield fs.lstat(file_or_dir_abs_path)
+	if (stat.isDirectory())
+		yield fs.ensureDir(new_loc)
+	else
+		yield fs.copy(file_or_dir_abs_path, new_loc)
+})
+
 const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() => {
 	const { debug } = options || {}
 	const dst = join(TEMP_FOLDER, Date.now().toString())
@@ -131,9 +145,10 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 					console.log(debugInfo(`Found ${all_files.length} files under folder \n${src}\nCopying them now...`))
 
 				// 4. Copy all the files from "src" to the temp destination
-				return Promise.all(all_files.map(f => fs.copy(f, join(dst, f.replace(src, '')))
+				return Promise.all(all_files.map(f => _copyFileOrDirToDest(f, dst, src)
 					.then(() => null)
 					.catch(() => {
+						console.log(all_files.map(f => join(dst, f.replace(src, ''))))
 						console.log(error(`Failed to clone nodejs project located under \n${src}\nto the temporary location \n${dst}\nThis procedure is usually required to zip the project before uploading it to the selected provider.`))
 						return f
 					})))
