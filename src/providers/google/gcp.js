@@ -968,7 +968,8 @@ const _filterAppJsonFields = appJson => {
 }
 
 /**
- * [description]
+ * Original doc: https://cloud.google.com/appengine/docs/admin-api/reference/rest/v1/apps.services.versions/create
+ * 
  * @param  {[type]}   projectId     [description]
  * @param  {[type]}   operationId   [description]
  * @param  {[type]}   token         [description]

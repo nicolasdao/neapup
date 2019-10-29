@@ -132,7 +132,7 @@ const deploy = (options={}) => co(function *() {
 					h.script.scriptPath = 'auto'
 			})
 
-		hostConfig.runtime = hostConfig.runtime || (deployingToFlex ? 'nodejs' : 'nodejs8' )
+		hostConfig.runtime = hostConfig.runtime || (deployingToFlex ? 'nodejs' : 'nodejs10' )
 
 		const extraFiles = { 
 			files: [
