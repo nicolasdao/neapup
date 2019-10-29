@@ -247,7 +247,7 @@ const zipFolderToBuffer = (src, options={ debug:false }) => fs.exists(src).then(
 	if (debug) 
 		console.log(debugInfo(`Starting to zip folder \n${src}.`))
 
-	const archive = archiver('zip', { zlib: { level: 9 } })
+	const archive = archiver('zip', { zlib: { level: 4 } })
 	const buffer = toBuffer(archive)
 
 	archive.on('warning', err => {
