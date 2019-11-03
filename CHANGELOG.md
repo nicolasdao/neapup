@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.26.0](https://github.com/nicolasdao/neapup/compare/v0.25.7...v0.26.0) (2019-11-03)
+
+
+### Bug Fixes
+
+* Deployment fail. Cannot unzip source code. Replace zip with files manifest ([baa547d](https://github.com/nicolasdao/neapup/commit/baa547d))
+
+
+
 ### [0.25.7](https://github.com/nicolasdao/neapup/compare/v0.25.6...v0.25.7) (2019-10-29)
 
 
