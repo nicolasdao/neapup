@@ -10,16 +10,20 @@
 const co = require('co')
 const _fs = require('fs')
 const fs = require('fs-extra')
-const { join, basename, dirname } = require('path')
+const { join, basename, dirname, sep } = require('path')
 const { homedir } = require('os')
 const _glob = require('glob')
 const archiver = require('archiver')
+const tar = require('tar-stream')
 const { toBuffer } = require('convert-stream')
+const { Writable } = require('stream')
+const sha1 = require('sha1')
+const mime = require('mime-types')
 const { error, exec, debugInfo, cmd, bold, link, info, warn } = require('./console')
 const { collection } = require('./core')
 
 const TEMP_FOLDER = join(homedir(), 'temp/neapup')
-const FILES_BLACK_LIST = ['.DS_Store', '.git']
+const FILES_BLACK_LIST = ['.DS_Store', '.git', '.npmignore', '.gitignore', '.eslintrc.json']
 const FILES_REQUIRED_LIST = ['package.json']
 const MAX_FILE_COUNT_PER_STANDARD_PROJECT = 10000
 const MAX_FILE_COUNT_PER_STANDARD_PROJECT_FOLDER = 1000
@@ -100,6 +104,15 @@ const _copyFileOrDirToDest = (file_or_dir_abs_path, dst, src) => co(function *()
 		yield fs.copy(file_or_dir_abs_path, new_loc)
 })
 
+/**
+ * Clones a folder under a hardcoded temp folder (TEMP_FOLDER + date stamp)
+ * 
+ * @param  {String}  src				Folder's absolute path to be cloned under the temporary folder.
+ * @param  {Boolean} options.debug	
+ * 
+ * @return {Number}  output.filesCount	
+ * @return {String}  output.dst			Destination of the temp folder	
+ */
 const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() => {
 	const { debug } = options || {}
 	const dst = join(TEMP_FOLDER, Date.now().toString())
@@ -118,7 +131,7 @@ const cloneNodejsProject = (src='', options={}) => createTempFolder().then(() =>
 			const all_files = files.filter(f => {
 				const relPath = f.replace(src, '').replace(/^(\\|\/)/, '')
 				const notAppEnvJson = !relPath.match(/^app\.([a-zA-Z0-9\-_]*?)\.json$/)
-				const notInBlackList = !blackList.some(file => f == file)
+				const notInBlackList = !blackList.some(file => f == file) && f.indexOf('.DS_Store') < 0
 				return notAppEnvJson && notInBlackList
 			})
 			
@@ -238,67 +251,175 @@ const deleteFolder = (src, options={ debug:false }) => {
 	})
 }
 
-const zipFolderToBuffer = (src, options={ debug:false }) => fs.exists(src).then(result => {
+
+/**
+ * Zips a folder into a buffer using zip (default) or tar.
+ * 
+ * @param  {String}  src			Folder's absolute path on local machine.
+ * @param  {String} options.type	Default 'zip'. Valid values are: 'zip', 'tar'
+ * @return {Buffer}						
+ */
+const zipFolderToBuffer = (src, options) => co(function *(){
+	const result = yield fs.exists(src)	
+
 	if (!result)
 		throw new Error(`Failed to zip folder ${src}. This folder does not exist.`)
 
-	const { debug } = options || {}
+	const { type='zip' } = options || {}
 
-	if (debug) 
-		console.log(debugInfo(`Starting to zip folder \n${src}.`))
+	if (type == 'zip') {
+		const archive = archiver('zip', { zlib: { level: 6 } })
+		const getBuffer = toBuffer(archive)
 
-	const archive = archiver('zip', { zlib: { level: 1 } })
-	const buffer = toBuffer(archive)
-
-	archive.on('warning', err => {
-		console.log(error('Warning while creating zip file'), err)
-	})
-
-	archive.on('error', err => {
-		throw err
-	})
-
-	archive.directory(src, '/')
-	archive.finalize()
-	return buffer
-		.then(v => {
-			if (debug) 
-				console.log(debugInfo(`Folder \n${src} \nsuccessfully zipped to buffer.`))
-			return v
+		archive.on('warning', err => {
+			console.log(error('Warning while creating zip file'), err)
 		})
-		.catch(e => {
-			console.log(error(`Failed to zip folder ${src}`))
-			throw e
+
+		archive.on('error', err => {
+			throw err
 		})
+
+		archive.directory(src, '/')
+		archive.finalize()
+
+		const buffer = yield getBuffer
+		
+		return buffer
+	} else if (type == 'tar') {
+		const files = yield getFiles(src, { pattern:'**/*.*' })
+		const data = yield files.map(file => readFile(file, { encoding:null }).then(content => ({
+			file,
+			relFile: file.replace(src,''),
+			content
+		})))
+
+		const pack = tar.pack()
+		data.forEach(({ relFile, content }) => pack.entry({ name:relFile }, content))
+		const chunks = []
+		const writeStream = new Writable({
+			write(chunk, encoding, callback) {
+				chunks.push(chunk)
+				callback()
+			}
+		})
+
+		pack.pipe(writeStream)
+		pack.finalize()
+
+		yield new Promise((success) => pack.on('end', success))
+
+		const buffer = Buffer.concat(chunks)
+
+		return buffer
+	} else 
+		throw new Error(`Unsupported zip type ${type}. Valid zip types: 'zip', 'tar'`)
+}).catch(e => {
+	console.log(error(`Failed to zip folder ${src}`))
+	throw e
 })
 
-const zipNodejsProject = (src, options={ debug:false }) => {
-	const { debug } = options || {}
+/**
+ * Get's the folder's manifest, i.e., the description of all files under that 
+ * 
+ * @param {String} 	src										Folder's absolute path on local machine.
+ * 
+ * @yield {String}	manifest['src/repos/index.js'].sha1		sha1 for that file, e.g., '77a06f1aeac07d34bfaa84c408791837cdeab3b9'
+ * @yield {String}	manifest['src/repos/index.js'].sha1Sum	e.g., '77a06f1a_eac07d34_bfaa84c4_08791837_cdeab3b9'
+ * @yield {Buffer}	manifest['src/repos/index.js'].content	File's content
+ */
+const getManifest = src => co(function *(){
+	const result = yield fs.exists(src)
+	if (!result)
+		throw new Error(`Failed to zip folder ${src}. This folder does not exist.`)
+
+	let files = yield getFiles(src, { pattern:'**/*.*', ignore:'**/node_modules/**' })
+	const dotFiles = yield getFiles(src, { pattern:'**/.*', ignore:'**/node_modules/**' })
+	if (dotFiles && dotFiles[0])
+		files.push(...dotFiles)
+	const data = (yield files.map(file => readFile(file, { encoding:null }).then(content => {
+		const id = sha1(content)
+		const sha1Sum = id//[0,1,2,3,4].map(i => id.slice(i*8,(i+1)*8)).join('_')
+		const name = file.replace(src,'').split(sep).filter(x => x).join('/')
+		return {
+			id,
+			name,
+			sha1Sum,
+			content
+		}
+	}))) || []
+
+	return data.reduce((manifest, { id, name, sha1Sum, content }) => {
+		manifest[name] = {
+			sha1: id,
+			sha1Sum,
+			content
+		}
+		return manifest
+	}, {})
+
+}).catch(e => {
+	console.log(error(`Failed to zip folder ${src}`))
+	throw e
+})
+
+
+//getManifest('/Users/nicolasdao/fairplay/fairplay-api/test').then(console.log)
+
+/**
+ * Zips the source folder into a buffer.
+ * 
+ * @param  {String} 			src					
+ * @param  {Boolean} 			options.debug		
+ * @param  {String} 			options.type		Default 'manifest'. Valid values: 'zip', 'manifest'
+ * 
+ * @return {Number} 			output.filesCount	
+ * @return {Buffer|Manifest} 	output.buffer		
+ */
+const getNodeJsProjectContent = (src, options) => co(function *(){
+	const { debug, type='manifest' } = options || {}
 
 	if (debug) 
 		console.log(debugInfo(`Starting to zip nodejs project located under\n${src}`))
 
-	return cloneNodejsProject(src, options)
-		.then(({ filesCount, dst }) => zipFolderToBuffer(dst, options).then(buffer => ({ filesCount, buffer, tempFolder: dst })))
-		.then(({ filesCount, buffer, tempFolder }) => {
-			if (debug) {
-				const sizeMb = (buffer.length / 1024 / 1024).toFixed(2) * 1
-				const s = sizeMb < 0.01 ? `${(buffer.length / 1024 ).toFixed(2)}KB` : `${sizeMb}MB`
-				console.log(debugInfo(`The nodejs project located under\n${src}\nhas been successfully zipped to buffer (${s})`))
-			}
-			
-			return deleteFolder(tempFolder, options)
-				.then(() => ({ filesCount, buffer }))
-		})
-		.catch(e => {
-			console.log(error(`Failed to zip nodejs project located under\n${src}`))
-			throw e
-		})
-}
+	// Copy the source folder in a temp folder.
+	const { filesCount, dst:tempFolder } = yield cloneNodejsProject(src, options)
+
+	if (type == 'manifest') {
+		const manifest = yield getManifest(tempFolder)
+		yield deleteFolder(tempFolder, options)
+		return { filesCount, manifest }
+	} else {
+		// Zip the temp folder
+		const buffer = yield zipFolderToBuffer(tempFolder, options)
+
+		if (debug) {
+			const sizeMb = (buffer.length / 1024 / 1024).toFixed(2) * 1
+			const s = sizeMb < 0.01 ? `${(buffer.length / 1024 ).toFixed(2)}KB` : `${sizeMb}MB`
+			console.log(debugInfo(`The nodejs project located under\n${src}\nhas been successfully zipped to buffer (${s})`))
+		}
+		
+		// Delete temp folder
+		yield deleteFolder(tempFolder, options)
+
+		return { filesCount, buffer }
+	}
+
+}).catch(e => {
+	console.log(error(`Failed to zip nodejs project located under\n${src}`))
+	throw e
+})
 
 const fileExists = p => new Promise((onSuccess, onFailure) => _fs.exists(p, exists => exists ? onSuccess(p) : onFailure(p)))
 
-const readFile = filePath => new Promise((onSuccess, onFailure) => _fs.readFile(filePath, 'utf8', (err, data) => err ? onFailure(err) : onSuccess(data)))
+const readFile = (filePath, options) => new Promise((onSuccess, onFailure) => {
+	const { encoding } = options || {}
+	if (encoding === undefined)
+		_fs.readFile(filePath, 'utf8', (err, data) => err ? onFailure(err) : onSuccess(data))
+	else if (encoding === null)
+		_fs.readFile(filePath, (err, data) => err ? onFailure(err) : onSuccess(data))
+	else
+		_fs.readFile(filePath, encoding, (err, data) => err ? onFailure(err) : onSuccess(data))
+})
 
 const writeToFile = (filePath, stringContent) => new Promise((onSuccess, onFailure) => _fs.writeFile(filePath, stringContent, err => 
 	err ? onFailure(err) : onSuccess()))
@@ -339,8 +460,28 @@ const getRootDir = (files=[]) => {
 	}, { dir: firstDir, l: firstDir.length }).dir
 }
 
+/**
+ * Gets the mime type associated with a file extension. 
+ *
+ * @param {String}		fileOrExt	e.g., 'json', '.md', 'file.html', 'folder/file.js', 'data:image/png;base64,....'
+ * @return {String}					e.g., 'application/json', 'text/markdown', 'text/html', 'application/javascript'
+ */
+const getMimeType = fileOrExt => {
+	if (!fileOrExt)
+		return ''
+	
+	// Test if 'fileOrExt' is a data URI
+	if (/^data:(.*?),/.test(fileOrExt)) 
+		return (fileOrExt.match(/^data:(.*?);/, '') || [])[1] || ''
+	
+	return mime.lookup(fileOrExt) || ''
+}
+
+// zipFolderToBuffer(join(__dirname, '../providers')).then(buffer => writeToFile(join(__dirname, '../../testtest.tar')))
+
 module.exports = {
-	zipToBuffer: zipNodejsProject,
+	zipToBuffer: (src, options) => getNodeJsProjectContent(src, { ...(options || {}), type:'zip' }),
+	getManifest: (src, options) => getNodeJsProjectContent(src, { ...(options || {}), type:'manifest' }),
 	exists: fileExists,
 	write: writeToFile,
 	read: readFile,
@@ -349,7 +490,8 @@ module.exports = {
 	getJsonFiles,
 	getAppJsonFiles,
 	getRootDir,
-	checkStandardEnvFilesQuotas
+	checkStandardEnvFilesQuotas,
+	getMimeType
 }
 
 

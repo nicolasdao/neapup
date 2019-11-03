@@ -10,9 +10,10 @@
 const co = require('co')
 const path = require('path')
 const clipboardy = require('clipboardy')
+const { client } = require('google-cloud-bucket')
 const gcp = require('../gcp')
 const { error, wait, success, link, bold, info, note, warn, askQuestion, question, debugInfo, cmd, promptList } = require('../../../utils/console')
-const { zipToBuffer, getAppJsonFiles, exists: fileExists } = require('../../../utils/files')
+const { zipToBuffer, getAppJsonFiles, exists: fileExists, getManifest, getMimeType } = require('../../../utils/files')
 const { promise, date, obj, collection, validate }  = require('../../../utils')
 const utils = require('../utils')
 const projectHelper = require('../project')
@@ -25,16 +26,19 @@ const QUOTAS_URL = 'https://console.cloud.google.com/iam-admin/quotas'
 
 /**
  * [description]
- * @param  {Object}   options.hostingConfig 		[description]
- * @param  {Boolean}  options.overrideAppConfig   [description]
- * @param  {String}   options.env             	[description]
- * @param  {Boolean}  options.debug             [description]
- * @param  {Boolean}  options.promote           [description]
- * @param  {String}   options.projectPath       [description]
- * @param  {String}   options.serviceName       [description]
- * @return {[type]}                     		[description]
+ * @param  {Object}   options.hostingConfig	
+ * @param  {Boolean}  options.overrideAppConfig
+ * @param  {String}   options.env
+ * @param  {Boolean}  options.debug
+ * @param  {Boolean}  options.promote			Default true. When true, all the traffic is migrated to this deployment as soon as it is successful.
+ * @param  {String}   options.projectPath
+ * @param  {String}   options.serviceName
+ * @param  {String}   options.type				Default 'manifest'. Valid values: 'zip', 'manifest'. With 'manifest', each file is uploaded one by one.
+ * @return {[type]}
  */
-const deploy = (options={}) => co(function *() {
+const deploy = options => co(function *() {
+	options = options || {}
+	const deploymentType = options.type || 'manifest'
 	options.deploying = true
 	if (options.promote === undefined) 
 		options.promote = true
@@ -116,7 +120,7 @@ const deploy = (options={}) => co(function *() {
 		console.log(info(`Deploying app (${bold(fileName)} config) to service ${bold(service.name)} in project ${bold(projectId)} ${locationId ? `(${locationId}) ` : ''}`))
 
 		//////////////////////////////
-		// 2. Zip project 
+		// 2. Configure app.json and app.yaml
 		//////////////////////////////
 		const appJsonConfig = (yield appJsonHelper.get(options.projectPath, options)) || {}
 		// 2.1. Create app.yaml for flexible environment 
@@ -141,45 +145,97 @@ const deploy = (options={}) => co(function *() {
 			]
 		} 
 
-		// 2.3. Zip
-		const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
-		waitDone = wait(msg)
-		const { filesCount, buffer } = yield zipToBuffer(options.projectPath, obj.merge(options, extraFiles, { build: hostConfig.build }))
-		waitDone()
-		console.log(success(`Nodejs app (${filesCount} files) successfully zipped.`))
-		zip.file = buffer
-		_updateDeploymentId(service, bucket, zip, filesCount)
-		//////////////////////////////
-		// 3. Create bucket & Check that the 'default' service exists
-		//////////////////////////////
-		const bucketTask = _createBucket(bucket.projectId, bucket.name, token, options).catch(e => ({ _error: e }))
-		const testDefaultServiceExistsTask = service.name == 'default' 
-			? Promise.resolve({ data: true })
-			: gcp.app.service.get(bucket.projectId, 'default', token, { debug: options.debug, verbose: false }).catch(e => ({ _error: e }))
-		const values = yield [bucketTask, testDefaultServiceExistsTask]
-		const e = values.find(v => v && v._error) 
-		if (e)
-			throw e._error
-		// 3.1. There is no 'default' 
-		if (!values[1].data) {
-			console.log(info(`No 'default' service defined yet. Choosing the 'default' service to deploy the app rather than '${service.name}' (this is a Google Cloud Platform constraint).`))
-			service.name = 'default'
+		const projectOptions = obj.merge(options, extraFiles, { build: hostConfig.build })
+
+		let manifestJSON
+		if (deploymentType == 'manifest') {
+			waitDone = wait('Creating deployment manifest...')
+			//////////////////////////////
+			// 3. Gets the project's manifest 
+			//////////////////////////////
+			const { filesCount, manifest } = yield getManifest(options.projectPath, projectOptions)
+			_updateDeploymentId({ service, bucket, zip, filesCount })
+			waitDone()
+			console.log(success(`App manifest (${filesCount} files) successfully created.`))
+			//////////////////////////////
+			// 4. Double check that the bucket manifest exists for this project
+			//////////////////////////////
+			const getManifestBucket = _createManifestBucket({ projectId: bucket.projectId, service:service.name },token)
+			//////////////////////////////
+			// 5. Check that the 'default' service exists
+			//////////////////////////////
+			const testDefaultServiceExistsTask = service.name == 'default' 
+				? Promise.resolve({ data: true })
+				: gcp.app.service.get(bucket.projectId, 'default', token, { debug: options.debug, verbose: false }).catch(e => ({ _error: e }))
+			const values = yield [getManifestBucket, testDefaultServiceExistsTask]
+			const e = values.find(v => v && v._error) 
+			if (e)
+				throw e._error
+			// 5.1. There is no 'default' 
+			if (!values[1].data) {
+				console.log(info(`No 'default' service defined yet. Choosing the 'default' service to deploy the app rather than '${service.name}' (this is a Google Cloud Platform constraint).`))
+				service.name = 'default'
+			}
+			const manifestBucket = values[0]
+			
+			//////////////////////////////
+			// 6. Upload all files to Google Storage
+			//////////////////////////////
+			const uploadResult = yield uploadManifest({ manifest, projectId:bucket.projectId, bucketId:manifestBucket }, token)
+			if (uploadResult.noAction) {
+				console.log(info('All your files are currently up-to-date. No need to deploy this project.'))
+				return
+			}
+			manifestJSON = uploadResult.manifest
+			// backup the manifest 
+			yield client.new({ projectId }).bucket(manifestBucket).object(`manifests/${service.version}.json`).insert(manifestJSON, { token })
+		} else {
+			//////////////////////////////
+			// 3. Zip project 
+			//////////////////////////////
+			const msg = hostConfig.build ? 'Re-building & zipping project...' : 'Zipping project...'
+			waitDone = wait(msg)
+			const { filesCount, buffer } = yield zipToBuffer(options.projectPath, projectOptions)
+			waitDone()
+			console.log(success(`Nodejs app(${filesCount} files) successfully zipped.`))
+			zip.file = buffer
+			_updateDeploymentId({ service, bucket, zip, filesCount })
+			//////////////////////////////
+			// 4. Create bucket
+			//////////////////////////////
+			const bucketTask = _createBucket(bucket.projectId, bucket.name, token, options).catch(e => ({ _error: e }))
+			//////////////////////////////
+			// 5. Check that the 'default' service exists
+			//////////////////////////////
+			const testDefaultServiceExistsTask = service.name == 'default' 
+				? Promise.resolve({ data: true })
+				: gcp.app.service.get(bucket.projectId, 'default', token, { debug: options.debug, verbose: false }).catch(e => ({ _error: e }))
+			const values = yield [bucketTask, testDefaultServiceExistsTask]
+			const e = values.find(v => v && v._error) 
+			if (e)
+				throw e._error
+			// 5.1. There is no 'default' 
+			if (!values[1].data) {
+				console.log(info(`No 'default' service defined yet. Choosing the 'default' service to deploy the app rather than '${service.name}' (this is a Google Cloud Platform constraint).`))
+				service.name = 'default'
+			}
+			//////////////////////////////
+			// 6. Upload zip to bucket
+			//////////////////////////////
+			const s = zip.file.length
+			let unit = 'MB'
+			let zipSize = (s/1024/1024).toFixed(2)
+			if (zipSize * 1 < 1) {
+				zipSize = (s/1024).toFixed(2)
+				unit = 'KB'
+			}
+			const uploadStart = Date.now()
+			waitDone = wait(`Uploading nodejs app (${zipSize}${unit}) to bucket`)
+			yield gcp.bucket.uploadFile(bucket.projectId, bucket.name, { name: zip.name, content: zip.file }, token, options)
+			waitDone()
+			console.log(success(`App (${zipSize}${unit}) successfully uploaded to bucket in ${((Date.now() - uploadStart)/1000).toFixed(2)} seconds.`))
 		}
-		//////////////////////////////
-		// 4. Upload zip to bucket
-		//////////////////////////////
-		const s = zip.file.length
-		let unit = 'MB'
-		let zipSize = (s/1024/1024).toFixed(2)
-		if (zipSize * 1 < 1) {
-			zipSize = (s/1024).toFixed(2)
-			unit = 'KB'
-		}
-		const uploadStart = Date.now()
-		waitDone = wait(`Uploading nodejs app (${zipSize}${unit}) to bucket`)
-		yield gcp.bucket.uploadFile(bucket.projectId, bucket.name, { name: zip.name, content: zip.file }, token, options)
-		waitDone()
-		console.log(success(`App (${zipSize}${unit}) successfully uploaded to bucket in ${((Date.now() - uploadStart)/1000).toFixed(2)} seconds.`))
+
 		//////////////////////////////
 		// 5. Make sure the Flexible Service API is enabled
 		//////////////////////////////
@@ -207,7 +263,9 @@ const deploy = (options={}) => co(function *() {
 		// 6. Deploying project
 		//////////////////////////////
 		deployStart = Date.now()
-		const { operationId, waitDone: done } = yield _deployApp(bucket, zip, service, token, waitDone, obj.merge(options))
+		const { operationId, waitDone: done } = yield (manifestJSON
+			? _deployApp({ bucket, manifest:manifestJSON, service, token, waitDone }, obj.merge(options))
+			: _deployApp({ bucket, zip, service, token, waitDone }, obj.merge(options)))
 		////////////////////////////////////
 		// 7. Checking deployment status
 		////////////////////////////////////
@@ -464,8 +522,13 @@ const _deployWebsite = ({ projectId, bucketId, locationId, projectPath }) => co(
 /**
  * IMPORTANT - DO NOT MANUALLY CREATE THE BUCKET NAME OR ZIP NAME OUTSIDE OF THIS
  * FUNCTION. THESE CONVENTIONS ARE CRITICAL TO RESTORE FAILED DEPLOYMENTS!
- * @param  {[type]} serviceVersion [description]
- * @return {[type]}                [description]
+ * 
+ * @param  {String} projectId 
+ * @param  {String} serviceVersion 
+ * 
+ * @return {String}	output.bucket.name
+ * @return {String}	output.bucket.projectId
+ * @return {String}	output.zip.name
  */
 const _initDeploymentAssets = (projectId, serviceVersion) => {
 	const deploymentId = `neapup-${serviceVersion}-filescount`.toLowerCase()
@@ -480,12 +543,13 @@ const _initDeploymentAssets = (projectId, serviceVersion) => {
 	}
 }
 
-const _updateDeploymentId = (servive, bucket, zip, filesCount) => {
-	zip.filesCount = filesCount
+const _updateDeploymentId = ({ service, bucket, zip, filesCount }) => {
+	if (zip)
+		zip.filesCount = filesCount
 	if (bucket && bucket.name)
 		bucket.name = bucket.name.replace('-filescount', `-${filesCount || 0}`)
-	if (servive && servive.version)
-		servive.version = `${servive.version}-${filesCount || 0}`
+	if (service && service.version)
+		service.version = `${service.version}-${filesCount || 0}`
 }
 
 
@@ -510,6 +574,117 @@ const _createBucket = (projectId, bucketName, token, options={}) => {
 			throw e 
 		})
 }
+
+/**
+ * Double check that the manifest bucket for this project exists, otherwise, create it.
+ * 
+ * @param {String}	projectId
+ * @param {String}	token
+ * 
+ * @yield {String}   		Bucket name
+ */
+const _createManifestBucket = ({ projectId, service }, token, options={}) => co(function *(){
+	const bucketName = `neapup-manifest-${projectId}-${service}`
+	const storage = client.new({ projectId })
+	const bucket = storage.bucket(bucketName)
+	const { id:bucketId } = ((yield storage.list({ token, prefix:bucketName })) || [])[0] || {}
+
+	if (bucketId) 
+		return bucketId
+
+	const bucketCreationDone = wait('Creating new deployment bucket...')
+	return yield bucket.create({ token })
+		.then(() => {
+			bucketCreationDone()
+			console.log(success(`Bucket successfully created (${bucketName}).`))
+			return bucketName
+		})
+		.catch(e => { 
+			bucketCreationDone()
+			try {
+				const er = JSON.parse(e.message)
+				if (er.code == 403 && er.message.indexOf('absent billing account') >= 0) {
+					return projectHelper.enableBilling(projectId, token, options).then(({ answer }) => {
+						if (answer == 'n') throw e
+						return _createManifestBucket({ projectId, service }, token, options)
+					})
+				}
+			} catch(_e) { (() => null)(_e) }
+			throw e 
+		})
+})
+
+/**
+ * Uploads all manifest files to Google Storage and returns the a Google App Engine manifest.json for
+ * deployment. 
+ * 
+ * @param {Object}	projectId	
+ * @param {Object}	bucketId	
+ * @param {Object}	manifest	JSON object with files and buffer to be uploaded.
+ * 
+ * @yield {Boolean}	output.noAction		Indicates whether or not any files have changed. If true, the deployment might not need to occur.
+ * @yield {Object}	output.manifest
+ */
+const uploadManifest = ({ manifest, projectId, bucketId }, token) => co(function *(){
+	if (!manifest)
+		return { noAction:true, manifest:null }
+
+	if (!bucketId)
+		throw new Error('Failed to upload manifest to bucket. Missing required argument \'bucket\'.')
+
+	const storage = client.new({ projectId })
+	const bucket = storage.bucket(bucketId)
+
+	const files = Object.keys(manifest)
+
+	const filesSyncDone = wait(`Synching ${files.length} files...`)
+
+	// 1. Get the latest manifest
+	const lastManifestRef = bucket.object('manifest_latest.json')
+	const lastManifest = (yield lastManifestRef.get({ token })) || {}
+
+	// 2. Upload new files or files that have changes from the latest manifest
+	const manifestFiles = yield files.map(file => co(function *(){
+		const { sha1, sha1Sum, content } = manifest[file]
+		// If this file exists and has not changed, then skip
+		if (lastManifest[file] && lastManifest[file].sha1Sum == sha1Sum)
+			return { file, sourceUrl:lastManifest[file].sourceUrl, sha1Sum: lastManifest[file].sha1Sum }
+
+		const mimeType = getMimeType(file)
+		const { publicUri:sourceUrl } = yield bucket.object(sha1).insert(content, { headers:{ 'Content-Type':mimeType }, token })
+		return {
+			file,
+			sourceUrl,
+			sha1Sum,
+			uploaded:true,
+			size:content.length
+		}
+	}))
+
+	// 3. Build new manifest
+	const newManifest = manifestFiles.reduce((acc, { file, sourceUrl, sha1Sum }) => {
+		acc[file] = {
+			sourceUrl,
+			sha1Sum
+		}
+		return acc
+	}, {})
+
+	// 4. Update the manifest
+	yield lastManifestRef.insert(newManifest, { token })
+
+	const filesUploaded = manifestFiles.filter(({ uploaded }) => uploaded)
+	let s = filesUploaded.reduce((acc, { size }) => acc+size, 0)
+	let unit = 'MB'
+	let totalSize = (s/1024/1024).toFixed(2)
+	if (totalSize * 1 < 1) {
+		totalSize = (s/1024).toFixed(2)
+		unit = 'KB'
+	}
+	filesSyncDone()
+	console.log(success(`All ${files.length} successfully synched (${filesUploaded.length} changes out of ${files.length} - ${totalSize}${unit} transferred).`))
+	return { noAction:filesUploaded.length === 0, manifest:newManifest }
+})
 
 const _selectLessValuableVersions = (nbr, versions) => nbr > 1
 	? collection.sortBy(versions, v => v.createTime, 'asc').slice(0, Math.round(nbr))
@@ -564,7 +739,20 @@ const _deleteAppVersions = (projectId, nbr=10, options={}) => getToken(options).
 		})
 })
 
-const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
+/**
+ * [description]
+ * @param  {String}		bucket.projectId		
+ * @param  {String}		bucket.name				Bucket's name/ID		
+ * @param  {String}		zip.name		
+ * @param  {Number}		zip.filesCount		
+ * @param  {String}		service.name		
+ * @param  {String}		service.version		
+ * @param  {String}		token					
+ * @param  {Function}	waitDone				
+ * @param  {Object}		options					
+ * @return {[type]}          [description]
+ */
+const _deployApp = ({ bucket, zip, manifest, service, token, waitDone }, options={}) => {
 	waitDone = wait(`Deploying nodejs app to project ${bold(bucket.projectId)} under App Engine's service ${bold(service.name)} version ${bold(service.version)}`)
 	return appHostingHelper.get(options.projectPath, options).then(hostingConfig => {
 		// Complying to the App Engine constraint for standard env
@@ -573,7 +761,24 @@ const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 				if (h.script && h.script.scriptPath)
 					h.script.scriptPath = 'auto'
 			})
-		return gcp.app.deploy(bucket.projectId, service.name, service.version, bucket.name, zip.name, zip.filesCount, token, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
+		const deployment = manifest 
+			? {
+				projectId:bucket.projectId, 
+				service:service.name, 
+				version:service.version, 
+				manifest,
+				token 
+			}
+			: { 
+				projectId:bucket.projectId, 
+				service:service.name, 
+				version:service.version, 
+				bucket:bucket.name, 
+				zipFile:zip.name, 
+				fileCount:zip.filesCount, 
+				token 
+			}
+		return gcp.app.deployV2(deployment, obj.merge(options, { verbose: false, hostingConfig })).then(({ data }) => {
 			if (!data.operationId) {
 				const msg = 'Unexpected response. Could not determine the operationId used to check the deployment status.'
 				console.log(error(msg))
@@ -603,7 +808,7 @@ const _deployApp = (bucket, zip, service, token, waitDone, options={}) => {
 							waitDone()
 							console.log(success('Project successfully freed from a few unused resources.'))
 							console.log(info('Trying to re-deploy now'))
-							return _deployApp(bucket, zip, service, token, waitDone, obj.merge(options, { noCleaning: true }))
+							return _deployApp({ bucket, zip, manifest, service, token, waitDone }, obj.merge(options, { noCleaning: true }))
 						})
 					}
 				}

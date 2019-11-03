@@ -45,7 +45,8 @@ const APP_ENG_DETAILS_URL = projectId => `https://appengine.googleapis.com/v1/ap
 const APP_ENG_CREATE_URL = () => 'https://appengine.googleapis.com/v1/apps'
 const APP_ENG_SERVICE_URL = (projectId, service) => `https://appengine.googleapis.com/v1/apps/${projectId}/services${service ? `/${service}` : ''}`
 const APP_ENG_SERVICE_VERSION_URL = (projectId, service, version) => `${APP_ENG_SERVICE_URL(projectId, service)}/versions${version ? `/${version}` : ''}`
-const APP_ENG_DEPLOY_URL = (projectId, service='default') => APP_ENG_SERVICE_VERSION_URL(projectId, service)
+// const APP_ENG_DEPLOY_URL = (projectId, service='default') => APP_ENG_SERVICE_VERSION_URL(projectId, service)
+const APP_ENG_DEPLOY_URL = (projectId, service='default') => `https://appengine.googleapis.com/v1beta/apps/${projectId}/services${service ? `/${service}` : ''}/versions`
 const APP_ENG_OPS_STATUS_URL = (projectId, operationId) => `https://appengine.googleapis.com/v1/apps/${projectId}/operations/${operationId}`
 const APP_ENG_MIGRATE_ALL_TRAFFIC = (projectId, service='default') => `https://appengine.googleapis.com/v1/apps/${projectId}/services/${service}/?updateMask=split`
 const APP_ENG_DOMAINS_URL = (projectId, domain) => `https://appengine.googleapis.com/v1/apps/${projectId}/domainMappings${domain ? `/${domain}` : ''}`
@@ -834,7 +835,7 @@ const listBucketContent = (bucketName, token, options={}) => Promise.resolve(nul
 	})
 })
 
-const CONTENT_TYPES = { 'zip': 'application/zip', 'json': 'application/json' }
+const CONTENT_TYPES = { 'zip': 'application/zip', 'json': 'application/json', 'gz': 'application/x-tar', 'tgz': 'application/x-tar', 'tar': 'application/x-tar' }
 const _getContentType = file => {
 	const ext = ((file || '').split('.').slice(-1)[0] || '').trim().toLowerCase()
 	return CONTENT_TYPES[ext] || 'application/text'
@@ -979,24 +980,38 @@ const _filterAppJsonFields = appJson => {
  * @param  {Function} options.timeOut      	default: 300000
  * @return {[type]}                 [description]
  */
-const deployApp = (projectId, service, version, bucket, zipFile, fileCount, token, options={}) => Promise.resolve(null).then(() => {
+const deployApp = (projectId, service, version, bucket, zipFile, fileCount, token, options) => Promise.resolve(null).then(() => {
+	options = options || {}
 	service = service || 'default'
-	_validateRequiredParams({ bucket, projectId, zipFile, fileCount, version, token })
+	const { manifest } = options
+	_validateRequiredParams({ projectId, version, token })
+	if (!manifest)
+		_validateRequiredParams({ bucket, zipFile, fileCount })
 
 	const env = ((options.hostingConfig || {}).env || '').toLowerCase().trim() 
-	let appJson = _filterAppJsonFields(Object.assign({}, options.hostingConfig || {}, {
-		id: version,
-		deployment: {
+	const deployment = manifest 
+		? {
+			files: manifest
+		} 
+		: {
 			zip: {
 				sourceUrl: `https://storage.googleapis.com/${bucket}/${zipFile}`,
 				filesCount: fileCount
 			}
 		}
+	let appJson = _filterAppJsonFields(Object.assign({}, options.hostingConfig || {}, {
+		id: version,
+		deployment
 	}))
 
-	appJson.runtime = appJson.runtime || (env == 'flex' || env == 'flexible' ? 'nodejs' : 'nodejs8')
+	appJson.runtime = appJson.runtime || (env == 'flex' || env == 'flexible' ? 'nodejs' : 'nodejs10')
 
-	const payload = JSON.stringify(appJson, null, ' ')
+	//appJson.deployment.zip.sourceUrl = 'https://storage.googleapis.com/1572514378573/1572514378573.zip'
+	
+	let payload = JSON.stringify(appJson, null, ' ')
+
+	// console.log(payload)
+	// console.log(APP_ENG_DEPLOY_URL(projectId, service))
 
 	_showDebug(`Deploying service to Google Cloud Platform's project ${bold(projectId)}.\n${payload}`, options)
 
@@ -1006,7 +1021,7 @@ const deployApp = (projectId, service, version, bucket, zipFile, fileCount, toke
 	}, payload, objectHelper.merge(options, { verbose: false }))
 		.then(res => {
 			_showDebug(`Deployment has started. Details: ${options.debug ? JSON.stringify(res.data, null, ' ') : ''}`, options)
-			if (res.data && res.data.name)
+			if (res.data && res.data.name) 
 				res.data.operationId = res.data.name.split('/').slice(-1)[0]
 			return res
 		})
@@ -2588,6 +2603,10 @@ module.exports = {
 		getInstanceTypes,
 		create: createApp,
 		deploy: deployApp,
+		deployV2: ({ projectId, service, version, bucket, manifest, zipFile, fileCount, token }, options) => {
+			options = options || {}
+			return deployApp(projectId, service, version, bucket, zipFile, fileCount, token, { ...options, manifest })
+		},
 		getOperationStatus: checkOperationStatus,
 		service: {
 			'get': getService,
