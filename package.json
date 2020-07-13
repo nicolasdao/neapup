@@ -43,7 +43,7 @@
     "eslint": "^6.1.0",
     "mocha": "^6.2.0",
     "node-dev": "^4.0.0",
-    "standard-version": "^6.0.1"
+    "standard-version": "^8.0.1"
   },
   "dependencies": {
     "ansi-escapes": "^3.1.0",
