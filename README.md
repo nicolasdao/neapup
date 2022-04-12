@@ -17,6 +17,11 @@ The only prerequisite of course is to have an existing Google Cloud account. The
 >	- [Configuration](#configuration)
 >	- [Managing Other Google Cloud Resources](#managing-other-google-cloud-resources)
 >	- [Static Website](#static-website)
+> * [Troubleshooting](#troubleshooting)
+>	- [`invalid_grant` error](#invalid_grant-error)
+> * [FAQ](#faq)
+>	- [How to reset neapup?](#how-to-reset-neapup)
+>	- [Where is the config file?](#where-is-the-config-file)
 > * [About Neap](#this-is-what-we-re-up-to)
 > * [License](#license)
 
@@ -132,6 +137,28 @@ The first setup is trivial and is automatically taken care of by `neapup`. The s
 ### Custom Domain
 
 This section is under construction.
+
+# Troubleshooting
+## `invalid_grant` error
+
+This typically happens when the refresh token expires. Unfortunately, GCloud sucks at providing error details, and leaves you with this unhelpfull message. To login again, delete the neapup config file:
+
+```
+rm -rf /Users/YOU/.neapup.json
+```
+
+# FAQ
+## How to reset neapup?
+
+Delete the config file:
+
+```
+rm -rf /Users/YOU/.neapup.json
+```
+
+## Where is the config file?
+
+It is stored under `/Users/YOU/.neapup.json`. 
 
 # This Is What We re Up To
 We are Neap, an Australian Technology consultancy powering the startup ecosystem in Sydney. We simply love building Tech and also meeting new people, so don't hesitate to connect with us at [https://neap.co](https://neap.co).
